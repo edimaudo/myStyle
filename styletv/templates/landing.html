@@ -10,6 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/marketing-controls.css">
+  <script defer src="/assets/site-settings.js"></script>
 </head>
 <body class="landing-body">
   <a class="skip-link" href="#main">Skip to content</a>
@@ -17,7 +19,18 @@
     <a class="brand" href="/" aria-label="styleTV home"><span class="brand-mark">s<span>t</span></span><span>styleTV</span></a>
     <nav class="marketing-nav" aria-label="Main navigation">
       <a href="#how-it-works">How it works</a>
-      <a href="#discover">Discover</a>
+      <a href="#discover">Explore styles</a>
+      <div class="site-display-controls" aria-label="Display settings">
+        <div class="font-control" role="group" aria-label="Text size">
+          <span>Text</span>
+          <button type="button" data-font="small" aria-label="Small text" aria-pressed="false">A</button>
+          <button type="button" data-font="medium" aria-label="Medium text" aria-pressed="true">A</button>
+          <button type="button" data-font="large" aria-label="Large text" aria-pressed="false">A</button>
+        </div>
+        <button type="button" class="icon-control theme-toggle" aria-label="Switch to dark mode" title="Switch colour theme">
+          <span aria-hidden="true">◐</span><span class="theme-label">Dark mode</span>
+        </button>
+      </div>
       {% if signed_in %}
         <a class="button button-primary button-small" href="/app">Open styleTV</a>
       {% else %}
@@ -30,19 +43,14 @@
     <section class="landing-hero page-wrap">
       <div class="hero-copy">
         <h1>The looks you love.<br><span>The style that’s you.</span></h1>
-        <p class="hero-description">Find outfits inspired by the shows you love, discover your next style obsession, and preview real-world looks before you shop.</p>
+        <p class="hero-description">Find outfits inspired by the shows you love, discover your next style obsession, and preview looks before you shop.</p>
         <div class="hero-actions">
           {% if signed_in %}
             <a href="/app" class="button button-primary button-large">Continue discovering <span aria-hidden="true">→</span></a>
           {% else %}
             <a href="/signin" class="button button-primary button-large">Build my style profile <span aria-hidden="true">→</span></a>
           {% endif %}
-          <a href="#how-it-works" class="button button-outline button-large">See how it works</a>
-        </div>
-        <div class="hero-proof" aria-label="What you can do">
-          <span><span class="proof-dot"></span> Discover TV looks</span>
-          <span><span class="proof-dot"></span> Try it on</span>
-          <span><span class="proof-dot"></span> Find your next favourite</span>
+          <a href="#how-it-works" class="button button-outline button-large">Explore the experience</a>
         </div>
       </div>
       <div class="hero-art" aria-label="Editorial fashion inspiration collage">
@@ -59,12 +67,21 @@
     <section id="how-it-works" class="how-section page-wrap">
       <div class="section-heading">
         <h2>From screen inspiration to your wardrobe.</h2>
-        <p>One personal style profile connects every part of the experience.</p>
+        <p>Your favourite shows help you find looks that fit your own taste.</p>
       </div>
       <div class="steps-grid">
-        <article class="step-card"><span class="step-number">01</span><div class="step-icon" aria-hidden="true">◎</div><h3>Start with your shows</h3><p>Search the series you love or take a short quiz to describe your style, colours, patterns and budget.</p></article>
-        <article class="step-card"><span class="step-number">02</span><div class="step-icon" aria-hidden="true">✳</div><h3>Find your next look</h3><p>Explore wardrobe inspiration from your favourites and discover shows with a similar aesthetic.</p></article>
-        <article class="step-card"><span class="step-number">03</span><div class="step-icon" aria-hidden="true">↗</div><h3>Preview, then shop</h3><p>Use virtual try-on for supported items, compare available colours and follow retailer links to shop.</p></article>
+        <article class="step-card">
+          <h3>Explore shows you love</h3>
+          <p>Search for your favourite series and explore the wardrobe details, colours and patterns that catch your eye.</p>
+        </article>
+        <article class="step-card">
+          <h3>Make it your style</h3>
+          <p>Build a profile around your preferences, discover similar aesthetics and update your tastes whenever they change.</p>
+        </article>
+        <article class="step-card">
+          <h3>Preview and shop</h3>
+          <p>Preview supported garments on your photo, compare available colours and follow links to retailers.</p>
+        </article>
       </div>
     </section>
 
@@ -75,7 +92,5 @@
       </div>
     </section>
   </main>
-
-  <footer class="marketing-footer page-wrap"><a class="brand" href="/" aria-label="styleTV home"><span class="brand-mark">s<span>t</span></span><span>styleTV</span></a><p>Find the look. Make it yours.</p><p class="footer-note">Demo experience. Sample imagery and prices are for exploration and are not verified retail listings.</p></footer>
 </body>
 </html>
