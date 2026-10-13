@@ -47,7 +47,10 @@
     currentView: 'discover',
     currentProduct: null,
     config: { gemini_configured: false, youcam_configured: false },
-    filteredShows: null
+    filteredShows: null,
+    catalogueMeta: null,
+    showResultLimit: 24,
+    lastShowFilter: ''
   };
 
   const $ = (selector, scope = document) => scope.querySelector(selector);
@@ -188,20 +191,6 @@
   function findProduct(id) { return state.products.find(product => product.id === id); }
 
 
-  async function hydrateShowArtwork() {
-    // TVmaze allows direct browser API use and image hotlinking. Cards never use generic fashion photos as show posters.
-    await Promise.all(state.shows.map(async show => {
-      try {
-        const response = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(show.name)}`, { cache: 'force-cache' });
-        if (!response.ok) return;
-        const details = await response.json();
-        show.image = details?.image?.medium || details?.image?.original || null;
-        show.tvmaze_url = details?.url || 'https://www.tvmaze.com/';
-      } catch (_) {
-        show.image = null;
-      }
-    }));
-  }
 
   function showArtwork(show) {
     if (show.image) {
@@ -273,10 +262,13 @@
   }
 
   function renderShowCard(show, isFavorite, showAction = true) {
-    const tags = (show.tags || []).slice(0, 3).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
+    const hasInferredCues = show.tags_source === 'inferred';
+    const visibleTags = (show.tags && show.tags.length ? show.tags : (show.genres || []));
+    const tags = visibleTags.slice(0, 3).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
+    const cueLabel = hasInferredCues ? (show.tags && show.tags.length ? 'Inferred style cues' : 'Genres') : 'Style cues';
     return `<article class="show-card" data-show-card="${escapeHTML(show.id)}">
       ${showArtwork(show)}
-      <div class="show-card-content"><h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p><div class="show-aesthetic-tags">${tags}</div>
+      <div class="show-card-content"><h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>${tags ? `<p class="show-cue-label">${cueLabel}</p><div class="show-aesthetic-tags">${tags}</div>` : ''}
       <div class="show-action-row">${showAction ? `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="${isFavorite}">${isFavorite ? 'Added to my shows ✓' : 'Add to my shows +'}</button>` : ''}<button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore looks</button></div>
       <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a></div></article>`;
   }
@@ -295,19 +287,60 @@
 
   function renderShows(filter = '') {
     const q = filter.trim().toLowerCase();
+    if (q !== state.lastShowFilter) {
+      state.lastShowFilter = q;
+      state.showResultLimit = 24;
+    }
     const favorites = new Set(state.profile.favoriteShows || []);
-    const visible = state.shows.filter(show => !q || `${show.name} ${show.description} ${show.tags.join(' ')}`.toLowerCase().includes(q));
-    const favoriteList = visible.filter(show => favorites.has(show.id));
-    const notFavorite = visible.filter(show => !favorites.has(show.id));
+    const visible = state.shows.filter(show => {
+      const searchable = [show.name, show.description, show.style_note, ...(show.tags || []), ...(show.genres || []), show.network, show.language]
+        .filter(Boolean).join(' ').toLowerCase();
+      return !q || searchable.includes(q);
+    });
+    const shown = visible.slice(0, state.showResultLimit);
     const allTarget = $('#all-shows-grid');
     const newTarget = $('#new-shows-grid');
-    if (allTarget) { allTarget.innerHTML = visible.length ? visible.map(show => renderShowCard(show, favorites.has(show.id))).join('') : '<div class="no-results">No shows matched that search. Try a style, a pattern, or a different title.</div>'; bindShowArtworkFallbacks(allTarget); }
+    const countTarget = $('#show-results-count');
+    const loadMore = $('#load-more-shows');
+    if (countTarget) {
+      const sourceStatus = state.catalogueMeta?.source_status;
+      const prefix = sourceStatus === 'fallback'
+        ? 'TVmaze is temporarily unavailable; showing the starter catalogue. '
+        : sourceStatus === 'partial'
+          ? 'Showing a partial TVmaze catalogue while the full index is unavailable. '
+          : '';
+      countTarget.textContent = `${prefix}${visible.length} show${visible.length === 1 ? '' : 's'} matched${q ? ` “${filter.trim()}”` : ''}. TV data and posters: TVmaze (CC BY-SA).`;
+    }
+    if (allTarget) {
+      allTarget.innerHTML = shown.length
+        ? shown.map(show => renderShowCard(show, favorites.has(show.id))).join('')
+        : '<div class="no-results">No shows matched that search. Try a title, genre or style cue.</div>';
+      bindShowArtworkFallbacks(allTarget);
+    }
+    if (loadMore) {
+      loadMore.hidden = visible.length <= state.showResultLimit;
+      loadMore.textContent = `Load more shows (${Math.max(0, visible.length - state.showResultLimit)} remaining)`;
+    }
     if (newTarget) {
+      const favoriteShows = state.shows.filter(show => favorites.has(show.id));
       const profileTags = new Set((state.profile.styleTags || []).map(x => x.toLowerCase()));
       const profilePatterns = new Set((state.profile.patterns || []).map(x => x.toLowerCase()));
-      const score = show => show.tags.reduce((total, tag) => total + (profileTags.has(tag.toLowerCase()) ? 2 : 0) + (profilePatterns.has(tag.toLowerCase()) ? 1 : 0), 0);
-      notFavorite.sort((a, b) => score(b) - score(a));
-      newTarget.innerHTML = notFavorite.length ? notFavorite.slice(0, 4).map(show => renderShowCard(show, false)).join('') : '<div class="no-results">You have added every show in this demo catalogue. Try another search or remove a favourite.</div>'; bindShowArtworkFallbacks(newTarget);
+      const favoriteGenres = new Set(favoriteShows.flatMap(show => (show.genres || []).map(g => g.toLowerCase())));
+      const score = show => {
+        const tags = new Set((show.tags || []).map(x => x.toLowerCase()));
+        const genres = new Set((show.genres || []).map(x => x.toLowerCase()));
+        const styleMatch = [...profileTags].filter(tag => tags.has(tag)).length * 3;
+        const patternMatch = [...profilePatterns].filter(tag => tags.has(tag)).length * 1.5;
+        const genreMatch = [...favoriteGenres].filter(genre => genres.has(genre)).length * 1.7;
+        const rating = Number(show.rating || 0) * 0.05;
+        return styleMatch + patternMatch + genreMatch + rating;
+      };
+      const recommendations = state.shows.filter(show => !favorites.has(show.id));
+      recommendations.sort((a, b) => score(b) - score(a));
+      newTarget.innerHTML = recommendations.length
+        ? recommendations.slice(0, 4).map(show => renderShowCard(show, false)).join('')
+        : '<div class="no-results">You have selected every show in this catalogue. Remove a favourite or explore a different style.</div>';
+      bindShowArtworkFallbacks(newTarget);
     }
     if ($('#favorite-shows')) renderFavoriteShows();
   }
@@ -332,6 +365,10 @@
       const label = product.colors?.[index] || `Colour ${index + 1}`;
       return `<button type="button" class="color-swatch" data-color-select="${escapeHTML(product.id)}" data-color="${escapeHTML(label)}" style="background:${escapeHTML(color)}" aria-label="Search for ${escapeHTML(label)} alternatives to ${escapeHTML(product.name)}" title="Search ${escapeHTML(label)} alternatives" aria-pressed="${index === 0}"></button>`;
     }).join('');
+    const canTryOn = Boolean(product.try_on_reference_url) && product.try_on_eligible !== false;
+    const tryOnButton = canTryOn
+      ? `<button type="button" class="button button-primary" data-try-on="${escapeHTML(product.id)}">Try this look</button>`
+      : `<button type="button" class="button button-primary" disabled aria-label="Virtual try-on is unavailable for ${escapeHTML(product.name)}">Try-on unavailable</button>`;
     return `<article class="product-card" data-product-card="${escapeHTML(product.id)}">
       <div class="product-photo"><img src="${escapeHTML(product.image)}" alt="Style reference for ${escapeHTML(product.name)}" loading="lazy" onerror="this.style.display='none'"><span class="product-tag">${escapeHTML(product.category)}</span><button type="button" class="save-look" data-save-product="${escapeHTML(product.id)}" aria-label="${saved ? 'Remove' : 'Save'} ${escapeHTML(product.name)}" aria-pressed="${saved}">${saved ? '♥' : '♡'}</button></div>
       <div class="product-content"><h3>${escapeHTML(product.name)}</h3><p class="product-description">${escapeHTML(product.reason)}</p>
@@ -339,7 +376,7 @@
       ${wardrobeShow ? `<a class="product-wardrobe-link" href="${escapeHTML(wardrobeSource(wardrobeShow))}" target="_blank" rel="noopener noreferrer">Explore ${escapeHTML(wardrobeShow.name)} wardrobe on WornOnTV ↗</a>` : ''}
       <div class="product-price-row"><span class="product-price">Around $${Number(product.price).toFixed(0)}</span><span class="product-price-note">${escapeHTML(product.price_note || 'sample price')}</span></div>
       <div class="swatch-row" aria-label="Colour ideas to explore">${swatches}</div>
-      <div class="product-actions"><button type="button" class="button button-primary" data-try-on="${escapeHTML(product.id)}">Try this look</button><a class="button button-outline" data-shop-product="${escapeHTML(product.id)}" href="${escapeHTML(product.shop_url)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a></div>
+      <div class="product-actions">${tryOnButton}<a class="button button-outline" data-shop-product="${escapeHTML(product.id)}" href="${escapeHTML(product.shop_url)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a></div>
       <p class="disclosure">Demo catalogue: colour ideas and sample prices are illustrative. Colour chips search for similar retailer listings; try-on uses the base reference image until verified variant images are added. Links do not confirm the exact garment or stock.</p></div></article>`;
   }
 
@@ -530,7 +567,8 @@
   async function pollTask(kind, taskId, maxAttempts = 24) {
     // Poll at a moderate interval; status requests are idempotent and the user can retry if processing takes longer.
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise(resolve => window.setTimeout(resolve, 5000));
+      // YouCam recommends regular task polling; use a 10-second interval to reduce needless requests.
+      await new Promise(resolve => window.setTimeout(resolve, 10000));
       const url = `/api/tasks/${kind}/${encodeURIComponent(taskId)}`;
       const result = await apiFetch(url, { method: 'GET' });
       if (result.status === 'success' || result.status === 'error') return result;
@@ -691,6 +729,13 @@
     });
     $('#show-search')?.addEventListener('input', event => renderShows(event.target.value));
     $('#clear-show-search')?.addEventListener('click', () => { $('#show-search').value = ''; renderShows(''); $('#show-search').focus(); });
+    $('#load-more-shows')?.addEventListener('click', () => {
+      state.showResultLimit += 24;
+      // Preserve the current query and render the next page of matching shows.
+      const q = $('#show-search')?.value || '';
+      state.lastShowFilter = q.trim().toLowerCase();
+      renderShows(q);
+    });
     $('#profile-form')?.addEventListener('submit', saveProfile);
     $('#save-profile-top')?.addEventListener('click', saveProfile);
     $('#quiz-form')?.addEventListener('submit', runQuizSubmit);
@@ -724,8 +769,15 @@
       ]);
       state.shows = catalog.shows || [];
       state.products = catalog.products || [];
+      state.catalogueMeta = catalog.catalogue || null;
       state.config = config;
-      await hydrateShowArtwork();
+      const catalogueStatus = $('#show-catalog-status');
+      if (catalogueStatus) {
+        const count = Number(state.catalogueMeta?.count || state.shows.length);
+        catalogueStatus.textContent = state.catalogueMeta?.source_status === 'fallback'
+          ? 'TVmaze could not be reached right now. Starter show selections are available; the full catalogue will retry shortly.'
+          : `Search ${count} shows with show-specific posters and metadata from TVmaze. See the attribution below for source and licensing information.`;
+      }
       renderProfileChoices();
       renderFavoriteShows();
       renderShows('');

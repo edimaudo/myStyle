@@ -1,8 +1,9 @@
-"""Curated demo catalogue for styleTV.
+"""Curated demo garment catalogue for styleTV.
 
-Show artwork is loaded from the TVmaze public API at runtime. Outfit imagery
-is fashion inspiration rather than verified screen-worn wardrobe. Replace demo
-product records with licensed imagery and verified product feeds before launch.
+TV show metadata and posters are loaded from the TVmaze public API at runtime.
+Garment imagery is demo inspiration, not a claim that the exact item appeared
+on screen. YouCam eligibility is explicit so unsupported reference shapes are
+not submitted to the provider by the UI or API.
 """
 from __future__ import annotations
 
@@ -160,6 +161,8 @@ PRODUCTS = [
         "image": "https://images.unsplash.com/photo-1542272604-787c3835535d?auto=format&fit=crop&w=900&q=85",
         "image_credit": "Unsplash fashion editorial image",
         "try_on_reference_url": "https://images.unsplash.com/photo-1542272604-787c3835535d?auto=format&fit=crop&w=1200&q=85",
+        "try_on_eligible": False,
+        "try_on_note": "Replace with a suitable worn lower-body outfit reference before enabling YouCam V4.",
         "garment_category": "lower_body",
         "retailer": "Levi's",
         "shop_url": "https://www.levi.com/US/en_US/search?q=wide%20leg%20jeans",

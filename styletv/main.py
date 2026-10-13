@@ -17,7 +17,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from .catalog import PRODUCTS, SHOWS, catalog_payload, get_product
+from .catalog import PRODUCTS, SHOWS, get_product
+from .tvmaze import get_show_catalog
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_DIR = ROOT / "public"
@@ -49,7 +50,13 @@ YCE_API_KEY = os.getenv("YCE_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
 MAX_UPLOAD_BYTES = 9_500_000
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png"}
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png"}
+
+# These provider paths match the current YouCam API reference documentation.
+YCE_TASK_PATHS = {
+    "try-on": "/s2s/v2.0/task/cloth-v4",
+    "color": "/s2s/v2.0/task/skin-tone-analysis",
+}
 
 
 def csrf_token(request: Request) -> str:
@@ -71,6 +78,11 @@ def require_session(request: Request) -> dict:
     return user
 
 
+def normalize_yce_content_type(content_type: str) -> str:
+    """Map browser image/jpeg to the image/jpg MIME type used in YouCam File API examples."""
+    return "image/png" if content_type == "image/png" else "image/jpg"
+
+
 def yce_headers() -> dict[str, str]:
     if not YCE_API_KEY:
         raise HTTPException(status_code=503, detail="YouCam is not configured. Add YCE_API_KEY to the environment to enable live analysis and try-on.")
@@ -84,15 +96,19 @@ async def upload_image_to_yce(image_bytes: bytes, filename: str, content_type: s
     if content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=415, detail="Use a JPG or PNG image.")
 
+    # YouCam's File API examples use image/jpg for JPEG uploads. Browsers normally
+    # report image/jpeg, so normalize the provider-facing metadata while preserving
+    # the original accepted input types at the HTTP boundary.
+    provider_content_type = normalize_yce_content_type(content_type)
     clean_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(filename or "upload.jpg").name)[:100]
     if not clean_name.lower().endswith((".jpg", ".jpeg", ".png")):
-        clean_name += ".jpg" if content_type == "image/jpeg" else ".png"
+        clean_name += ".png" if provider_content_type == "image/png" else ".jpg"
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         metadata_response = await client.post(
             f"{YCE_BASE}/s2s/v2.0/file",
             headers=yce_headers(),
-            json={"files": [{"content_type": content_type, "file_name": clean_name, "file_size": len(image_bytes)}]},
+            json={"files": [{"content_type": provider_content_type, "file_name": clean_name, "file_size": len(image_bytes)}]},
         )
         if metadata_response.is_error:
             logger.warning("YouCam file metadata request failed: %s", metadata_response.status_code)
@@ -262,7 +278,12 @@ async def config(request: Request):
 @app.get("/api/catalog")
 async def api_catalog(request: Request):
     require_session(request)
-    return catalog_payload()
+    catalogue = await get_show_catalog(SHOWS)
+    return {
+        "shows": catalogue["shows"],
+        "products": PRODUCTS,
+        "catalogue": catalogue["catalogue"],
+    }
 
 
 class RecommendationRequest(BaseModel):
@@ -271,14 +292,18 @@ class RecommendationRequest(BaseModel):
     limit: int = Field(default=6, ge=1, le=12)
 
 
-def deterministic_rank(profile: dict[str, Any], query: str = "") -> list[dict[str, Any]]:
+def deterministic_rank(profile: dict[str, Any], query: str = "", shows: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     selected_shows = set(profile.get("favoriteShows") or [])
+    show_catalog = shows or SHOWS
+    selected_show_tags: set[str] = set()
     query_lower = query.lower()
     # A user choosing "Explore looks" from a show card should get items linked to that show,
     # even when it is not already one of their favourites.
-    for show in SHOWS:
+    for show in show_catalog:
         if show["name"].lower() in query_lower:
             selected_shows.add(show["id"])
+        if show.get("id") in selected_shows:
+            selected_show_tags.update(str(tag).lower() for tag in (show.get("tags") or []))
     selected_tags = {str(item).lower() for item in (profile.get("styleTags") or [])}
     selected_patterns = {str(item).lower() for item in (profile.get("patterns") or [])}
     preferred_colors = {str(item).lower() for item in (profile.get("colorPreferences") or [])}
@@ -302,6 +327,11 @@ def deterministic_rank(profile: dict[str, Any], query: str = "") -> list[dict[st
         item_colors = {x.lower() for x in item.get("colors", [])}
         item_shows = set(item.get("shows", []))
         score += 3 * len(selected_tags & item_tags)
+        # Show tags come from curated starter cues or transparent metadata-based
+        # inferences. They influence garment recommendations without claiming
+        # that TVmaze contains episode-specific costume records.
+        score += 2 * len(selected_show_tags & item_tags)
+        score += 1 * len(selected_show_tags & item_patterns)
         score += 2 * len(selected_patterns & item_patterns)
         score += 1 * len(preferred_colors & item_colors)
         score += 3 if selected_shows & item_shows else 0
@@ -314,7 +344,32 @@ def deterministic_rank(profile: dict[str, Any], query: str = "") -> list[dict[st
     return [item for _, item in scored]
 
 
-async def gemini_recommendations(profile: dict[str, Any], query: str, candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+def rank_show_recommendations(profile: dict[str, Any], shows: list[dict[str, Any]], limit: int = 30) -> list[dict[str, Any]]:
+    """Rank new shows using user aesthetic tags plus metadata genres from TVmaze."""
+    favorites = set(profile.get("favoriteShows") or [])
+    by_id = {show.get("id"): show for show in shows}
+    favorite_genres: set[str] = set()
+    for show_id in favorites:
+        favorite_genres.update(str(g).casefold() for g in (by_id.get(show_id, {}).get("genres") or []))
+    profile_tags = {str(tag).casefold() for tag in (profile.get("styleTags") or [])}
+    profile_patterns = {str(tag).casefold() for tag in (profile.get("patterns") or [])}
+
+    def score(show: dict[str, Any]) -> tuple[float, float]:
+        tags = {str(tag).casefold() for tag in (show.get("tags") or [])}
+        genres = {str(genre).casefold() for genre in (show.get("genres") or [])}
+        value = 3.0 * len(tags & profile_tags) + len(tags & profile_patterns)
+        value += 1.6 * len(genres & favorite_genres)
+        rating = show.get("rating")
+        return value, float(rating or 0)
+
+    candidates = [show for show in shows if show.get("id") not in favorites]
+    candidates.sort(key=score, reverse=True)
+    return candidates[:limit]
+
+
+async def gemini_recommendations(
+    profile: dict[str, Any], query: str, candidates: list[dict[str, Any]], shows: list[dict[str, Any]] | None = None
+) -> dict[str, Any] | None:
     if not GEMINI_API_KEY:
         return None
     try:
@@ -324,13 +379,20 @@ async def gemini_recommendations(profile: dict[str, Any], query: str, candidates
             {"id": x["id"], "name": x["name"], "tags": x["tags"], "patterns": x["patterns"], "shows": x["shows"], "price_sample_usd": x["price"]}
             for x in candidates
         ]
+        show_catalog = shows or SHOWS
+        show_shortlist = rank_show_recommendations(profile, show_catalog, limit=40)
+        known_shows = [
+            {"id": item["id"], "name": item["name"], "genres": item.get("genres", []), "style_cues": item.get("tags", []), "synopsis": item.get("description", "")[:180]}
+            for item in show_shortlist
+        ]
         prompt = (
-            "You power styleTV, a TV-inspired fashion discovery app. Interpret the user's request and rank only existing catalog items. "
-            "Never invent shows, garments, prices, retailers, or availability. Return valid JSON only with keys: product_ids (array of known ids), "
-            "show_ids (array of known show ids), explanation (one short sentence), interpreted_preferences (object with tags and patterns arrays). "
-            "Do not infer or recommend clothing based on race or skin type. Colour-tone results, when present, are optional styling input only.\n"
+            "You power styleTV, a TV-inspired fashion discovery app. Interpret the request and rank only existing catalogue items. "
+            "Never invent shows, garments, prices, retailers, or availability. Return valid JSON only with keys: product_ids (array of known product ids), "
+            "show_ids (array of known show ids selected only from the supplied show shortlist), explanation (one short sentence), "
+            "interpreted_preferences (object with tags and patterns arrays). Show genre/synopsis similarity is a discovery hint, not proof of wardrobe similarity. "
+            "Do not infer or recommend clothing based on race or skin type. Facial colour-tone results are optional styling inspiration only.\n"
             f"USER QUERY: {query}\nPROFILE: {json.dumps(profile, ensure_ascii=False)}\nCATALOG: {json.dumps(candidate_data, ensure_ascii=False)}\n"
-            f"KNOWN SHOWS: {json.dumps([{ 'id': s['id'], 'name': s['name'], 'tags': s['tags'] } for s in SHOWS], ensure_ascii=False)}"
+            f"SHOW SHORTLIST: {json.dumps(known_shows, ensure_ascii=False)}"
         )
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = await asyncio.to_thread(
@@ -347,7 +409,7 @@ async def gemini_recommendations(profile: dict[str, Any], query: str, candidates
             cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.IGNORECASE)
         parsed = json.loads(cleaned)
         valid_product_ids = {x["id"] for x in candidates}
-        valid_show_ids = {x["id"] for x in SHOWS}
+        valid_show_ids = {x["id"] for x in known_shows}
         parsed["product_ids"] = [x for x in parsed.get("product_ids", []) if x in valid_product_ids]
         parsed["show_ids"] = [x for x in parsed.get("show_ids", []) if x in valid_show_ids]
         return parsed
@@ -359,8 +421,10 @@ async def gemini_recommendations(profile: dict[str, Any], query: str, candidates
 @app.post("/api/recommendations")
 async def api_recommendations(body: RecommendationRequest, request: Request):
     require_session(request)
-    ranked = deterministic_rank(body.profile, body.query)
-    ai = await gemini_recommendations(body.profile, body.query, ranked) if GEMINI_API_KEY else None
+    catalogue = await get_show_catalog(SHOWS)
+    shows = catalogue["shows"]
+    ranked = deterministic_rank(body.profile, body.query, shows)
+    ai = await gemini_recommendations(body.profile, body.query, ranked, shows) if GEMINI_API_KEY else None
     valid_ids = {x["id"] for x in ranked}
     if ai:
         ai_ids = [item_id for item_id in ai.get("product_ids", []) if item_id in valid_ids]
@@ -369,13 +433,20 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         ordered.extend(x for x in ranked if x["id"] not in set(ai_ids))
         ranked = ordered
     favorite_ids = set(body.profile.get("favoriteShows") or [])
-    show_recommendations = [show_id for show_id in (ai or {}).get("show_ids", []) if show_id not in favorite_ids]
+    related_shows = rank_show_recommendations(body.profile, shows, limit=12)
+    ai_show_ids = [show_id for show_id in (ai or {}).get("show_ids", []) if show_id not in favorite_ids]
+    related_by_id = {show["id"]: show for show in related_shows}
+    show_recommendations = [related_by_id[show_id] for show_id in ai_show_ids if show_id in related_by_id]
+    if not show_recommendations:
+        show_recommendations = related_shows[:6]
     return {
         "products": ranked[: body.limit],
         "explanation": (ai or {}).get("explanation") or "Matched against your saved shows, style preferences, patterns and budget.",
         "source": "gemini" if ai else "catalogue-matcher",
         "model": GEMINI_MODEL if ai else None,
-        "show_recommendations": show_recommendations,
+        "show_recommendations": [show["id"] for show in show_recommendations],
+        "show_recommendation_details": show_recommendations,
+        "catalogue_source": catalogue["catalogue"],
         "interpreted_preferences": (ai or {}).get("interpreted_preferences", {}),
     }
 
@@ -393,6 +464,8 @@ async def try_on(
     product = get_product(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="This style was not found in the catalogue.")
+    if product.get("try_on_eligible", True) is False:
+        raise HTTPException(status_code=400, detail="This reference image is not eligible for YouCam Clothes V4 yet. Choose another garment for try-on.")
     if not product.get("try_on_reference_url"):
         raise HTTPException(status_code=400, detail="This style does not have a try-on reference image yet.")
     content_type = (photo.content_type or "").lower()
@@ -401,7 +474,7 @@ async def try_on(
     photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
     file_id = await upload_image_to_yce(photo_bytes, photo.filename or "styleTV-photo.jpg", content_type)
     payload = await create_yce_task(
-        "/s2s/v2.0/task/cloth-v4",
+        YCE_TASK_PATHS["try-on"],
         {
             "src_file_id": file_id,
             "ref_file_url": product["try_on_reference_url"],
@@ -427,7 +500,7 @@ async def color_analysis(request: Request, photo: UploadFile = File(...), consen
     photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
     file_id = await upload_image_to_yce(photo_bytes, photo.filename or "styleTV-colour-selfie.jpg", content_type)
     payload = await create_yce_task(
-        "/s2s/v2.0/task/skin-tone-analysis",
+        YCE_TASK_PATHS["color"],
         {"src_file_id": file_id, "face_angle_strictness_level": "high"},
     )
     try:
@@ -444,7 +517,7 @@ async def task_status(kind: str, task_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Unknown task type.")
     if not task_id or len(task_id) > 512 or ".." in task_id:
         raise HTTPException(status_code=400, detail="Invalid task ID.")
-    endpoint = "/s2s/v2.0/task/cloth-v4/" if kind == "try-on" else "/s2s/v2.0/task/skin-tone-analysis/"
+    endpoint = YCE_TASK_PATHS[kind] + "/"
     async with httpx.AsyncClient(timeout=25.0) as client:
         response = await client.get(f"{YCE_BASE}{endpoint}{task_id}", headers=yce_headers())
         if response.is_error:
