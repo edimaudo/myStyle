@@ -24,7 +24,6 @@ Demo sign-in defaults:
 - Password: `styleTV2026`
 
 
-
 ## YouCam workflows
 - Clothing virtual try-on
 -  Facial colour-tone analysis
