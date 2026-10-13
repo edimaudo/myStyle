@@ -479,3 +479,72 @@ def test_find_my_looks_form_has_submit_handler_and_bounded_fallback():
     assert "addEventListener('submit'" in script
     assert 'new AbortController()' in script
     assert 'localRank(query, focusShow)' in script
+
+
+def test_catalog_returns_products_without_waiting_for_tvmaze(monkeypatch):
+    authed = sign_in(TestClient(main.app))
+
+    async def unexpected_tvmaze_call(_seed_shows):
+        raise AssertionError('The immediate catalogue must not wait for TVmaze.')
+
+    monkeypatch.setattr(main, 'get_show_catalog', unexpected_tvmaze_call)
+    response = authed.get('/api/catalog')
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload['products']) == len(main.PRODUCTS)
+    assert {show['id'] for show in payload['shows']} == {show['id'] for show in main.SHOWS}
+
+
+def test_expanded_show_catalogue_is_separate_endpoint(stub_catalogue):
+    authed = sign_in(TestClient(main.app))
+    response = authed.get('/api/shows')
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload['shows']) >= len(main.SHOWS)
+    assert payload['catalogue']['limit'] == 450
+
+
+def test_profile_and_quiz_share_expanded_budget_choices():
+    from pathlib import Path
+    app_template = Path('styletv/templates/app.html').read_text()
+    app_js = Path('public/assets/app.js').read_text()
+    expected = ['25', '40', '50', '60', '75', '80', '100', '125', '150', '200', '250', '300', 'any']
+    for amount in expected:
+        assert f"['{amount}'," in app_js
+        if amount != 'any':
+            assert f'<option value="{amount}"' in app_template
+    assert 'This budget also applies to the recommendations on Discover.' in app_template
+
+
+def test_show_browse_has_search_and_favourite_filters_and_no_verbose_status_copy():
+    from pathlib import Path
+    app_template = Path('styletv/templates/app.html').read_text()
+    app_js = Path('public/assets/app.js').read_text()
+    assert 'id="show-search"' in app_template
+    assert 'data-show-filter="all"' in app_template
+    assert 'data-show-filter="favorites"' in app_template
+    assert 'data-show-filter="recommended"' in app_template
+    assert "Search 450 shows with show-specific posters" not in app_template
+    assert 'Only run an analysis when you\'re ready.' not in app_template
+    assert "loadExpandedShowCatalogue();" in app_js
+    assert "apiFetch('/api/catalog'" in app_js
+
+
+def test_discovery_card_images_are_contained_not_cropped():
+    from pathlib import Path
+    css = Path('public/assets/style.css').read_text()
+    assert '.product-photo img { width: 100%; height: 100%; object-fit: contain;' in css
+    assert '.show-card-image img { width: 100%; height: 100%; object-fit: contain;' in css
+
+
+def test_find_my_looks_is_enabled_after_fast_catalogue_and_renders_local_first():
+    from pathlib import Path
+    app_template = Path('styletv/templates/app.html').read_text()
+    app_js = Path('public/assets/app.js').read_text()
+    main_source = Path('styletv/main.py').read_text()
+    assert 'id="find-looks-button"' in app_template
+    assert "requestRecommendations($('#style-search')?.value.trim() || '');" in app_js
+    assert "const localProducts = localRank(query, focusShow);" in app_js
+    assert 'network/API latency cannot block Find my looks' in app_js
+    assert '@app.get("/api/shows")' in main_source
+    assert 'discovery never waits on TVmaze' in main_source

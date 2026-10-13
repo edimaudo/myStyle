@@ -34,7 +34,7 @@
     ['subtle', 'Keep it subtle'], ['medium', 'A bit of a statement'], ['bold', 'Bold and experimental']
   ];
   const BUDGETS = [
-    ['40', 'Up to $40'], ['60', 'Up to $60'], ['80', 'Up to $80'], ['100', 'Up to $100'], ['150', 'Up to $150'], ['any', 'No fixed budget']
+    ['25', 'Up to $25'], ['40', 'Up to $40'], ['50', 'Up to $50'], ['60', 'Up to $60'], ['75', 'Up to $75'], ['80', 'Up to $80'], ['100', 'Up to $100'], ['125', 'Up to $125'], ['150', 'Up to $150'], ['200', 'Up to $200'], ['250', 'Up to $250'], ['300', 'Up to $300'], ['any', 'No fixed budget']
   ];
 
   const state = {
@@ -51,7 +51,9 @@
     filteredShows: null,
     catalogueMeta: null,
     showResultLimit: 24,
-    lastShowFilter: ''
+    lastShowFilter: '',
+    showListMode: 'all',
+    expandedShowsLoading: false
   };
 
   const $ = (selector, scope = document) => scope.querySelector(selector);
@@ -286,6 +288,19 @@
     }, { once: true }));
   }
 
+  function showRecommendationScore(show) {
+    const favoriteShows = state.shows.filter(item => (state.profile.favoriteShows || []).includes(item.id));
+    const profileTags = new Set((state.profile.styleTags || []).map(x => String(x).toLowerCase()));
+    const profilePatterns = new Set((state.profile.patterns || []).map(x => String(x).toLowerCase()));
+    const favoriteGenres = new Set(favoriteShows.flatMap(item => item.genres || []).map(x => String(x).toLowerCase()));
+    const tags = new Set((show.tags || []).map(x => String(x).toLowerCase()));
+    const genres = new Set((show.genres || []).map(x => String(x).toLowerCase()));
+    return [...profileTags].filter(tag => tags.has(tag)).length * 3
+      + [...profilePatterns].filter(tag => tags.has(tag)).length * 1.5
+      + [...favoriteGenres].filter(genre => genres.has(genre)).length * 1.7
+      + Number(show.rating || 0) * 0.05;
+  }
+
   function renderShows(filter = '') {
     const q = filter.trim().toLowerCase();
     if (q !== state.lastShowFilter) {
@@ -293,51 +308,59 @@
       state.showResultLimit = 24;
     }
     const favorites = new Set(state.profile.favoriteShows || []);
-    const visible = state.shows.filter(show => {
-      const searchable = [show.name, show.description, show.style_note, ...(show.tags || []), ...(show.genres || []), show.network, show.language]
-        .filter(Boolean).join(' ').toLowerCase();
-      return !q || searchable.includes(q);
-    });
-    const shown = visible.slice(0, state.showResultLimit);
+    const visible = [];
     const allTarget = $('#all-shows-grid');
     const newTarget = $('#new-shows-grid');
     const countTarget = $('#show-results-count');
     const loadMore = $('#load-more-shows');
+    const filterButtons = $$('[data-show-filter]');
+    filterButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.showFilter === state.showListMode)));
+    const matchingShows = state.shows.filter(show => {
+      const searchable = [show.name, show.description, show.style_note, ...(show.tags || []), ...(show.genres || []), show.network, show.language]
+        .filter(Boolean).join(' ').toLowerCase();
+      return !q || searchable.includes(q);
+    });
+    const favoriteIds = new Set(state.profile.favoriteShows || []);
+    const matchedFavorites = matchingShows.filter(show => favoriteIds.has(show.id));
+    const matchedRecommendations = matchingShows.filter(show => !favoriteIds.has(show.id)).sort((a, b) => showRecommendationScore(b) - showRecommendationScore(a));
+    visible.length = 0;
+    const modeShows = state.showListMode === 'favorites'
+      ? matchedFavorites
+      : state.showListMode === 'recommended'
+        ? matchedRecommendations
+        : matchingShows;
+    visible.push(...modeShows);
+    const shownFiltered = visible.slice(0, state.showResultLimit);
+    const heading = $('#show-list-heading');
+    if (heading) heading.textContent = state.showListMode === 'favorites'
+      ? 'My favourites'
+      : state.showListMode === 'recommended' ? 'Recommended for me' : 'All shows';
     if (countTarget) {
-      const sourceStatus = state.catalogueMeta?.source_status;
-      const prefix = sourceStatus === 'fallback'
-        ? 'TVmaze is temporarily unavailable; showing the starter catalogue. '
-        : sourceStatus === 'partial'
-          ? 'Showing a partial TVmaze catalogue while the full index is unavailable. '
-          : '';
-      countTarget.textContent = `${prefix}${visible.length} show${visible.length === 1 ? '' : 's'} matched${q ? ` “${filter.trim()}”` : ''}. TV data and posters: TVmaze (CC BY-SA).`;
+      const modeLabel = state.showListMode === 'favorites' ? 'favourite show' : state.showListMode === 'recommended' ? 'recommendation' : 'show';
+      countTarget.textContent = `${visible.length} ${modeLabel}${visible.length === 1 ? '' : 's'}${q ? ` match “${filter.trim()}”` : ''}.`;
     }
     if (allTarget) {
-      allTarget.innerHTML = shown.length
-        ? shown.map(show => renderShowCard(show, favorites.has(show.id))).join('')
-        : '<div class="no-results">No shows matched that search. Try a title, genre or style cue.</div>';
+      const emptyMessage = state.showListMode === 'favorites'
+        ? 'You have not added any favourite shows yet. Search for a show and select “Add to my shows”.'
+        : state.expandedShowsLoading && state.showListMode === 'all'
+          ? 'Loading more shows. Your search results will update automatically.'
+          : state.showListMode === 'recommended'
+            ? 'No new show recommendations match this search. Try another style or title.'
+            : 'No shows matched that search. Try a show title, genre or style.';
+      allTarget.innerHTML = shownFiltered.length
+        ? shownFiltered.map(show => renderShowCard(show, favorites.has(show.id))).join('')
+        : `<div class="no-results">${escapeHTML(emptyMessage)}</div>`;
       bindShowArtworkFallbacks(allTarget);
     }
     if (loadMore) {
       loadMore.hidden = visible.length <= state.showResultLimit;
       loadMore.textContent = `Load more shows (${Math.max(0, visible.length - state.showResultLimit)} remaining)`;
     }
+    const newSection = $('#new-shows-section');
+    if (newSection) newSection.hidden = state.showListMode !== 'all';
     if (newTarget) {
-      const favoriteShows = state.shows.filter(show => favorites.has(show.id));
-      const profileTags = new Set((state.profile.styleTags || []).map(x => x.toLowerCase()));
-      const profilePatterns = new Set((state.profile.patterns || []).map(x => x.toLowerCase()));
-      const favoriteGenres = new Set(favoriteShows.flatMap(show => (show.genres || []).map(g => g.toLowerCase())));
-      const score = show => {
-        const tags = new Set((show.tags || []).map(x => x.toLowerCase()));
-        const genres = new Set((show.genres || []).map(x => x.toLowerCase()));
-        const styleMatch = [...profileTags].filter(tag => tags.has(tag)).length * 3;
-        const patternMatch = [...profilePatterns].filter(tag => tags.has(tag)).length * 1.5;
-        const genreMatch = [...favoriteGenres].filter(genre => genres.has(genre)).length * 1.7;
-        const rating = Number(show.rating || 0) * 0.05;
-        return styleMatch + patternMatch + genreMatch + rating;
-      };
       const recommendations = state.shows.filter(show => !favorites.has(show.id));
-      recommendations.sort((a, b) => score(b) - score(a));
+      recommendations.sort((a, b) => showRecommendationScore(b) - showRecommendationScore(a));
       newTarget.innerHTML = recommendations.length
         ? recommendations.slice(0, 4).map(show => renderShowCard(show, false)).join('')
         : '<div class="no-results">You have selected every show in this catalogue. Remove a favourite or explore a different style.</div>';
@@ -734,7 +757,11 @@
       if (viewButton) {
         const view = viewButton.dataset.view || viewButton.dataset.goView;
         if (view) switchView(view);
-        if (viewButton.dataset.focusNewShows === 'true') $('#new-shows-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (viewButton.dataset.focusNewShows === 'true') {
+          state.showListMode = 'recommended';
+          renderShows($('#show-search')?.value || '');
+          $('#all-shows-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         return;
       }
       const browseButton = event.target.closest('[data-browse-show]');
@@ -791,8 +818,18 @@
 
     $('#style-search-form')?.addEventListener('submit', async event => {
       event.preventDefault();
-      await requestRecommendations($('#style-search').value.trim());
+      const query = $('#style-search').value.trim();
+      const normalizedQuery = query.toLocaleLowerCase();
+      const focusShow = state.shows
+        .filter(show => show.name && normalizedQuery.includes(show.name.toLocaleLowerCase()))
+        .sort((a, b) => b.name.length - a.name.length)[0] || null;
+      await requestRecommendations(query, focusShow);
     });
+    $$('[data-show-filter]').forEach(button => button.addEventListener('click', () => {
+      state.showListMode = button.dataset.showFilter || 'all';
+      state.showResultLimit = 24;
+      renderShows($('#show-search')?.value || '');
+    }));
     $('#show-search')?.addEventListener('input', event => renderShows(event.target.value));
     $('#clear-show-search')?.addEventListener('click', () => { $('#show-search').value = ''; renderShows(''); $('#show-search').focus(); });
     $('#load-more-shows')?.addEventListener('click', () => {
@@ -820,17 +857,55 @@
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('#try-on-dialog')?.open) closeTryOn(); });
   }
 
-  async function init() {
-    // Wire interactions before awaiting IndexedDB. A blocked local database must
-    // not leave Find my looks or the other controls without event handlers.
-    attachEvents();
+  async function loadExpandedShowCatalogue() {
+    if (state.expandedShowsLoading) return;
+    state.expandedShowsLoading = true;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 12000);
     try {
-      state.db = await openDatabase();
-      await loadLocalState();
+      const expanded = await apiFetch('/api/shows', { method: 'GET', signal: controller.signal });
+      if (Array.isArray(expanded.shows) && expanded.shows.length) {
+        // Keep profile-stable seed IDs where possible; the API normalizes starter shows
+        // to those same IDs and supplies expanded metadata for all other shows.
+        state.shows = expanded.shows;
+        state.catalogueMeta = expanded.catalogue || state.catalogueMeta;
+        renderFavoriteShows();
+        renderShows($('#show-search')?.value || '');
+      }
     } catch (error) {
-      showAlert(`${error.message} Local preferences may not persist in this browser.`, 'error');
+      // The six starter shows remain usable; do not impair the garment search UI.
+      const status = $('#show-results-count');
+      if (status && !state.shows.length) status.textContent = 'Show catalogue is temporarily unavailable. You can still search the starter shows.';
+    } finally {
+      window.clearTimeout(timeoutId);
+      state.expandedShowsLoading = false;
     }
+  }
+
+  async function init() {
+    // Wire interactions immediately and load IndexedDB independently from the
+    // product catalogue. A browser storage stall must never disable garment search.
+    attachEvents();
+    const localStatePromise = (async () => {
+      try {
+        state.db = await openDatabase();
+        await loadLocalState();
+        // If the catalogue has already loaded, apply stored preferences and refresh
+        // the current result set after IndexedDB resolves.
+        if (state.products.length) {
+          renderProfileChoices();
+          renderFavoriteShows();
+          renderShows($('#show-search')?.value || '');
+          requestRecommendations($('#style-search')?.value.trim() || '');
+        }
+      } catch (error) {
+        showAlert(`${error.message} Local preferences may not persist in this browser.`, 'error');
+      }
+    })();
+
     try {
+      // /api/catalog is intentionally local and fast. Expanded TVmaze discovery is
+      // requested later so network/API latency cannot block Find my looks.
       const [catalog, config] = await Promise.all([
         apiFetch('/api/catalog', { method: 'GET' }),
         apiFetch('/api/config', { method: 'GET' })
@@ -839,27 +914,30 @@
       state.products = catalog.products || [];
       state.catalogueMeta = catalog.catalogue || null;
       state.config = config;
-      const catalogueStatus = $('#show-catalog-status');
-      if (catalogueStatus) {
-        const count = Number(state.catalogueMeta?.count || state.shows.length);
-        catalogueStatus.textContent = state.catalogueMeta?.source_status === 'fallback'
-          ? 'TVmaze could not be reached right now. Starter show selections are available; the full catalogue will retry shortly.'
-          : `Search ${count} shows with show-specific posters and metadata from TVmaze. See the attribution below for source and licensing information.`;
+      const findButton = $('#find-looks-button');
+      if (findButton) {
+        findButton.disabled = false;
+        findButton.textContent = 'Find my looks →';
       }
       renderProfileChoices();
       renderFavoriteShows();
-      renderShows('');
-      await requestRecommendations('');
-      if ($('#recommendation-status')) {
-        $('#recommendation-status').textContent = config.gemini_configured
-          ? `Personalized matching enabled with ${config.gemini_model}.`
-          : 'Using built-in matching. Add GEMINI_API_KEY to enable natural-language AI personalization.';
-      }
+      renderShows($('#show-search')?.value || '');
+      // Results render locally immediately; API-based ranking runs in the background.
+      requestRecommendations($('#style-search')?.value.trim() || '');
       buildQuizFromProfile();
       if (!state.settings.walkthroughSeen) openWalkthrough();
+      loadExpandedShowCatalogue();
     } catch (error) {
+      const findButton = $('#find-looks-button');
+      if (findButton) {
+        findButton.disabled = false;
+        findButton.textContent = 'Find my looks →';
+      }
       showAlert(error.message || 'Could not load styleTV data.', 'error');
     }
+    // Do not await storage before enabling search. Storage can finish after the
+    // first render and refresh preferences once available.
+    void localStatePromise;
   }
 
   document.addEventListener('DOMContentLoaded', init, { once: true });

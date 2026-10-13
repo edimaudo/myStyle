@@ -278,11 +278,27 @@ async def config(request: Request):
 
 @app.get("/api/catalog")
 async def api_catalog(request: Request):
+    """Return local product fixtures immediately so discovery never waits on TVmaze."""
+    require_session(request)
+    return {
+        "shows": SHOWS,
+        "products": PRODUCTS,
+        "catalogue": {
+            "count": len(SHOWS),
+            "limit": 450,
+            "source": "styleTV starter catalogue",
+            "source_status": "starter",
+        },
+    }
+
+
+@app.get("/api/shows")
+async def api_shows(request: Request):
+    """Load the expanded open TVmaze show catalogue separately from garment discovery."""
     require_session(request)
     catalogue = await get_show_catalog(SHOWS)
     return {
         "shows": catalogue["shows"],
-        "products": PRODUCTS,
         "catalogue": catalogue["catalogue"],
     }
 
