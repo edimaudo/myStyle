@@ -358,3 +358,124 @@ def test_try_on_dialog_follows_current_clothes_v4_full_body_guidance():
     app_template = Path('styletv/templates/app.html').read_text()
     assert 'high-resolution, front-facing full-body photo' in app_template
     assert 'showing the full body, with one person and a simple background' in app_template
+
+
+def test_dynamic_show_focus_tags_rank_relevant_existing_garments():
+    dynamic_show = {
+        "id": "tvmaze-4242",
+        "name": "Example Punk Series",
+        "tags": ["punk", "plaid"],
+        "genres": ["Drama"],
+    }
+    ranked = main.deterministic_rank(
+        {"favoriteShows": [], "styleTags": [], "patterns": [], "colorPreferences": [], "budget": "any"},
+        "Example Punk Series",
+        shows=[dynamic_show],
+        focus_show_id="tvmaze-4242",
+        focus_show_tags=dynamic_show["tags"],
+    )
+    assert ranked[0]["id"] == "plaid-overshirt"
+    assert all(item["id"] in {product["id"] for product in main.PRODUCTS} for item in ranked)
+
+
+def test_recommendation_endpoint_accepts_explicit_dynamic_show_context(monkeypatch):
+    authed = sign_in(TestClient(main.app))
+    monkeypatch.setattr(main, "GEMINI_API_KEY", "")
+    dynamic_show = {
+        "id": "tvmaze-4242", "name": "Example Punk Series", "tags": ["punk", "plaid"],
+        "genres": ["Drama"], "description": "A drama about an alternative music scene.",
+        "rating": 7.8, "image": "https://static.tvmaze.com/test-original.jpg",
+        "tvmaze_url": "https://www.tvmaze.com/shows/4242/example-punk-series",
+    }
+    payload = demo_catalogue_payload()
+    payload["shows"].append(dynamic_show)
+
+    async def dynamic_catalogue(_seeds):
+        return payload
+
+    monkeypatch.setattr(main, "get_show_catalog", dynamic_catalogue)
+    page = authed.get('/app').text
+    token = re.search(r'<meta name="csrf-token" content="([^"]+)"', page).group(1)
+    response = authed.post(
+        '/api/recommendations',
+        headers={'X-CSRF-Token': token},
+        json={
+            'query': 'Example Punk Series',
+            'profile': {'favoriteShows': [], 'styleTags': [], 'patterns': [], 'colorPreferences': [], 'budget': 'any'},
+            'limit': 4,
+            'focus_show_id': 'tvmaze-4242',
+            'focus_show_name': 'Example Punk Series',
+            'focus_show_tags': ['punk', 'plaid'],
+        },
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result['products'][0]['id'] == 'plaid-overshirt'
+    assert 'Example Punk Series' in result['explanation']
+
+
+def test_tvmaze_prefers_original_resolution_posters():
+    original = tvmaze._normalise_record(tvmaze_record(654321, 'Poster Quality Test'))
+    assert original['image'] == 'https://static.tvmaze.com/uploads/images/original_untouched/654321.jpg'
+
+
+def test_find_my_looks_does_not_depend_on_live_tvmaze(monkeypatch):
+    authed = sign_in(TestClient(main.app))
+    page = authed.get('/app').text
+    token = re.search(r'<meta name="csrf-token" content="([^"]+)"', page).group(1)
+    monkeypatch.setattr(main, 'GEMINI_API_KEY', '')
+
+    async def unexpected_catalogue_call(_seed_shows):
+        raise AssertionError('recommendations must not fetch TVmaze on every search')
+
+    monkeypatch.setattr(main, 'get_show_catalog', unexpected_catalogue_call)
+    response = authed.post(
+        '/api/recommendations',
+        headers={'X-CSRF-Token': token},
+        json={
+            'query': 'punk plaid jacket under $100',
+            'profile': {'favoriteShows': ['wednesday'], 'styleTags': ['punk', 'alternative'], 'patterns': ['plaid'], 'colorPreferences': ['Black'], 'budget': 100},
+            'limit': 6,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['products']
+    assert all(product['price'] <= 100 for product in payload['products'])
+    assert payload['source'] == 'catalogue-matcher'
+
+
+def test_find_my_looks_falls_back_when_gemini_times_out(monkeypatch):
+    authed = sign_in(TestClient(main.app))
+    page = authed.get('/app').text
+    token = re.search(r'<meta name="csrf-token" content="([^"]+)"', page).group(1)
+    monkeypatch.setattr(main, 'GEMINI_API_KEY', 'configured-for-test')
+    monkeypatch.setattr(main, 'RECOMMENDATION_AI_TIMEOUT_SECONDS', 0.01)
+
+    async def slow_gemini(*_args, **_kwargs):
+        await asyncio.sleep(0.1)
+        return None
+
+    monkeypatch.setattr(main, 'gemini_recommendations', slow_gemini)
+    response = authed.post(
+        '/api/recommendations',
+        headers={'X-CSRF-Token': token},
+        json={
+            'query': 'black jacket',
+            'profile': {'favoriteShows': ['wednesday'], 'styleTags': ['alternative'], 'patterns': ['solid'], 'budget': 100},
+            'limit': 6,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()['products']
+    assert response.json()['source'] == 'catalogue-matcher'
+
+
+def test_find_my_looks_form_has_submit_handler_and_bounded_fallback():
+    from pathlib import Path
+    template = Path('styletv/templates/app.html').read_text()
+    script = Path('public/assets/app.js').read_text()
+    assert 'id="style-search-form"' in template
+    assert "addEventListener('submit'" in script
+    assert 'new AbortController()' in script
+    assert 'localRank(query, focusShow)' in script

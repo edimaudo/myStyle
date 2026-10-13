@@ -46,6 +46,7 @@
     savedIds: new Set(),
     currentView: 'discover',
     currentProduct: null,
+    recommendationRequestId: 0,
     config: { gemini_configured: false, youcam_configured: false },
     filteredShows: null,
     catalogueMeta: null,
@@ -392,31 +393,85 @@
     $$('img', target).forEach(img => img.addEventListener('error', () => { img.parentElement.classList.add('image-unavailable'); }, { once: true }));
   }
 
-  async function requestRecommendations(query = '') {
+  async function requestRecommendations(query = '', focusShow = null) {
+    const requestId = ++state.recommendationRequestId;
     const subtitle = $('#recommendation-subtitle');
     const status = $('#recommendation-status');
-    if (status) status.textContent = GEMINI_STATUS();
-    if (subtitle && query) subtitle.textContent = `Matches for “${query}” and your current style profile.`;
-    if (status) status.textContent = state.config.gemini_configured ? 'Personalizing your results…' : 'Matching your profile to the demo catalogue…';
+    if (focusShow && subtitle) {
+      subtitle.textContent = `Style matches inspired by ${focusShow.name}. These are aesthetic matches, not verified outfits worn on the show.`;
+    } else if (subtitle) {
+      subtitle.textContent = query
+        ? `Matches for “${query}” and your current style profile.`
+        : 'A starting point based on your current preferences.';
+    }
+
+    // Render local matches first so the button always produces immediate feedback,
+    // even if Gemini or the recommendation endpoint is slow.
+    const localProducts = localRank(query, focusShow);
+    if (state.products.length) renderProducts(localProducts);
+    if (status) status.textContent = state.config.gemini_configured
+      ? 'Showing initial matches while checking for personalized ranking…'
+      : 'Showing matches from your style profile and catalogue…';
+
+    const requestBody = {
+      query,
+      profile: state.profile,
+      limit: 6,
+      focus_show_id: focusShow?.id || null,
+      focus_show_name: focusShow?.name || null,
+      focus_show_tags: Array.isArray(focusShow?.tags) ? focusShow.tags : []
+    };
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const result = await apiFetch('/api/recommendations', { method: 'POST', body: JSON.stringify({ query, profile: state.profile, limit: 6 }) });
-      renderProducts(result.products || []);
-      if (status) status.textContent = result.source === 'gemini' ? `Recommendations refined with ${result.model}. ${result.explanation || ''}` : `Catalogue matches · ${result.explanation || 'Based on your current preferences.'}`;
+      const result = await apiFetch('/api/recommendations', {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+      if (requestId !== state.recommendationRequestId) return;
+      const products = Array.isArray(result.products) ? result.products : [];
+      // Empty API results should not erase useful local matches. If the user's
+      // explicit budget excludes everything, preserve the empty result only when
+      // local ranking also finds nothing.
+      const finalProducts = products.length ? products : localProducts;
+      renderProducts(finalProducts);
+      if (status) {
+        if (products.length) {
+          const source = result.source === 'gemini' ? `Recommendations refined with ${result.model}.` : 'Catalogue matches.';
+          status.textContent = `${source} ${result.explanation || 'Based on your current preferences.'}`;
+        } else {
+          status.textContent = finalProducts.length
+            ? 'Showing local catalogue matches; no additional server matches were returned.'
+            : 'No items match this budget and request. Increase your budget or try different style terms.';
+        }
+      }
     } catch (error) {
-      if (status) status.textContent = 'Showing catalogue matches. Live personalization could not be reached.';
-      renderProducts(localRank(query));
-      showAlert(error.message, 'error');
+      if (requestId !== state.recommendationRequestId) return;
+      renderProducts(localProducts);
+      if (status) {
+        status.textContent = error.name === 'AbortError'
+          ? 'The recommendation service took too long. Showing local catalogue matches instead.'
+          : 'The recommendation service is unavailable. Showing local catalogue matches instead.';
+      }
+      if (error.name !== 'AbortError') showAlert(error.message || 'Could not contact recommendations; local matching is available.', 'error');
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
   function GEMINI_STATUS() { return state.config.gemini_configured ? 'Gemini personalization is available.' : 'Using the built-in catalogue matcher until Gemini is configured.'; }
 
-  function localRank(query = '') {
+  function localRank(query = '', focusShow = null) {
     const q = query.toLowerCase();
     const profile = state.profile;
+    const focusTags = new Set((focusShow?.tags || []).map(tag => String(tag).toLowerCase()));
     const favored = new Set(profile.favoriteShows || []);
-    const queryShows = state.shows.filter(show => q.includes(show.name.toLowerCase()));
+    const queryShows = state.shows
+      .filter(show => show.name && q.includes(show.name.toLowerCase()))
+      .sort((a, b) => b.name.length - a.name.length);
     const queryShowIds = new Set(queryShows.map(show => show.id));
+    const queryShowTags = new Set(queryShows.flatMap(show => show.tags || []).map(tag => String(tag).toLowerCase()));
     const style = new Set((profile.styleTags || []).map(x => x.toLowerCase()));
     const patterns = new Set((profile.patterns || []).map(x => x.toLowerCase()));
     const colors = new Set((profile.colorPreferences || []).map(x => x.toLowerCase()));
@@ -424,7 +479,12 @@
     const budget = budgetMatch ? Number(budgetMatch[1]) : (profile.budget === 'any' ? null : Number(profile.budget));
     const candidates = state.products.filter(product => budget == null || !Number.isFinite(budget) || Number(product.price) <= budget);
     return candidates.sort((a, b) => {
-      const score = p => (p.tags || []).filter(t => style.has(t.toLowerCase()) || q.includes(t.toLowerCase())).length * 3 + (p.patterns || []).filter(t => patterns.has(t.toLowerCase()) || q.includes(t.toLowerCase())).length * 2 + (p.colors || []).filter(t => colors.has(t.toLowerCase())).length + (p.shows || []).filter(t => favored.has(t) || queryShowIds.has(t)).length * 3;
+      const score = p =>
+        (p.tags || []).filter(t => style.has(t.toLowerCase()) || q.includes(t.toLowerCase())).length * 3 +
+        (p.tags || []).filter(t => focusTags.has(t.toLowerCase()) || queryShowTags.has(t.toLowerCase())).length * 4 +
+        (p.patterns || []).filter(t => patterns.has(t.toLowerCase()) || q.includes(t.toLowerCase()) || focusTags.has(t.toLowerCase()) || queryShowTags.has(t.toLowerCase())).length * 2 +
+        (p.colors || []).filter(t => colors.has(t.toLowerCase()) || q.includes(t.toLowerCase())).length +
+        (p.shows || []).filter(t => favored.has(t) || queryShowIds.has(t) || (focusShow && focusShow.id === t)).length * 3;
       return score(b) - score(a);
     }).slice(0, 6);
   }
@@ -469,7 +529,6 @@
     if (view === 'saved') renderSaved();
     if (view === 'discover') {
       renderFavoriteShows();
-      if (!$('#product-grid').children.length) requestRecommendations('');
     }
     $('#app-main')?.focus({ preventScroll: true });
     window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -681,10 +740,17 @@
       const browseButton = event.target.closest('[data-browse-show]');
       if (browseButton) {
         const show = findShow(browseButton.dataset.browseShow);
+        if (!show) {
+          showAlert('This show is no longer in the loaded catalogue. Refresh the page and try again.', 'error');
+          return;
+        }
         switchView('discover');
-        const query = show?.name || '';
-        $('#style-search').value = query;
-        await requestRecommendations(query);
+        const query = show.name;
+        const searchInput = $('#style-search');
+        if (searchInput) searchInput.value = query;
+        // Pass the selected show explicitly. This prevents the generic discover
+        // request from racing and overwriting the requested show matches.
+        await requestRecommendations(query, show);
         return;
       }
       const toggleButton = event.target.closest('[data-toggle-show]');
@@ -755,13 +821,15 @@
   }
 
   async function init() {
+    // Wire interactions before awaiting IndexedDB. A blocked local database must
+    // not leave Find my looks or the other controls without event handlers.
+    attachEvents();
     try {
       state.db = await openDatabase();
       await loadLocalState();
     } catch (error) {
-      showAlert(`${error.message} This browser may be blocking local storage.`, 'error');
+      showAlert(`${error.message} Local preferences may not persist in this browser.`, 'error');
     }
-    attachEvents();
     try {
       const [catalog, config] = await Promise.all([
         apiFetch('/api/catalog', { method: 'GET' }),

@@ -131,7 +131,7 @@ def _normalise_record(record: dict[str, Any], seed: dict[str, Any] | None = None
         "rating": numeric_rating,
         "network": ((record.get("network") or {}).get("name") if isinstance(record.get("network"), dict) else None)
             or ((record.get("webChannel") or {}).get("name") if isinstance(record.get("webChannel"), dict) else None),
-        "image": image.get("medium") or image.get("original"),
+        "image": image.get("original") or image.get("medium"),
         "tvmaze_url": record.get("url") or f"https://www.tvmaze.com/shows/{tvmaze_id}",
         "data_source": "TVmaze",
         "wornontv_url": wornontv_url,

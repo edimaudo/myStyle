@@ -50,6 +50,7 @@ YCE_API_KEY = os.getenv("YCE_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
 MAX_UPLOAD_BYTES = 9_500_000
+RECOMMENDATION_AI_TIMEOUT_SECONDS = 7.5
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png"}
 
 # These provider paths match the current YouCam API reference documentation.
@@ -290,12 +291,25 @@ class RecommendationRequest(BaseModel):
     query: str = Field(default="", max_length=1200)
     profile: dict[str, Any] = Field(default_factory=dict)
     limit: int = Field(default=6, ge=1, le=12)
+    # Explicit show context makes the Explore actions deterministic even if a
+    # serverless instance cannot refresh TVmaze at the same moment.
+    focus_show_id: str | None = Field(default=None, max_length=100)
+    focus_show_name: str | None = Field(default=None, max_length=240)
+    focus_show_tags: list[str] = Field(default_factory=list, max_length=12)
 
 
-def deterministic_rank(profile: dict[str, Any], query: str = "", shows: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+def deterministic_rank(
+    profile: dict[str, Any],
+    query: str = "",
+    shows: list[dict[str, Any]] | None = None,
+    focus_show_id: str | None = None,
+    focus_show_tags: list[str] | None = None,
+) -> list[dict[str, Any]]:
     selected_shows = set(profile.get("favoriteShows") or [])
+    if focus_show_id:
+        selected_shows.add(focus_show_id)
     show_catalog = shows or SHOWS
-    selected_show_tags: set[str] = set()
+    selected_show_tags: set[str] = {str(tag).lower() for tag in (focus_show_tags or [])}
     query_lower = query.lower()
     # A user choosing "Explore looks" from a show card should get items linked to that show,
     # even when it is not already one of their favourites.
@@ -420,11 +434,43 @@ async def gemini_recommendations(
 
 @app.post("/api/recommendations")
 async def api_recommendations(body: RecommendationRequest, request: Request):
+    """Return garment matches without requiring a live show-catalogue request.
+
+    TVmaze discovery is loaded separately by /api/catalog. A search should remain
+    fast and available even when that public metadata service is slow or down.
+    Explicit show context from the browser makes show-inspired searches work for
+    any loaded TVmaze show, while the product results remain grounded in PRODUCTS.
+    """
     require_session(request)
-    catalogue = await get_show_catalog(SHOWS)
-    shows = catalogue["shows"]
-    ranked = deterministic_rank(body.profile, body.query, shows)
-    ai = await gemini_recommendations(body.profile, body.query, ranked, shows) if GEMINI_API_KEY else None
+    shows = SHOWS
+    ranked = deterministic_rank(
+        body.profile,
+        body.query,
+        shows,
+        focus_show_id=body.focus_show_id,
+        focus_show_tags=body.focus_show_tags,
+    )
+    ai_query = body.query
+    if body.focus_show_name:
+        cues = ", ".join(body.focus_show_tags) or "the show's broader visual aesthetic"
+        ai_query = (
+            f"Find garments from the current catalogue with a similar aesthetic to the TV show "
+            f"{body.focus_show_name}. Style cues: {cues}. These are inspiration matches, not verified costumes. "
+            f"Additional user request: {body.query}"
+        )
+
+    ai = None
+    if GEMINI_API_KEY and ranked:
+        try:
+            ai = await asyncio.wait_for(
+                gemini_recommendations(body.profile, ai_query, ranked, shows),
+                timeout=RECOMMENDATION_AI_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Gemini recommendations timed out; returning catalogue matches")
+        except Exception:
+            logger.exception("Recommendation generation failed; returning catalogue matches")
+
     valid_ids = {x["id"] for x in ranked}
     if ai:
         ai_ids = [item_id for item_id in ai.get("product_ids", []) if item_id in valid_ids]
@@ -432,6 +478,7 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         ordered = [by_id[x] for x in ai_ids]
         ordered.extend(x for x in ranked if x["id"] not in set(ai_ids))
         ranked = ordered
+
     favorite_ids = set(body.profile.get("favoriteShows") or [])
     related_shows = rank_show_recommendations(body.profile, shows, limit=12)
     ai_show_ids = [show_id for show_id in (ai or {}).get("show_ids", []) if show_id not in favorite_ids]
@@ -439,14 +486,22 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
     show_recommendations = [related_by_id[show_id] for show_id in ai_show_ids if show_id in related_by_id]
     if not show_recommendations:
         show_recommendations = related_shows[:6]
+
     return {
         "products": ranked[: body.limit],
-        "explanation": (ai or {}).get("explanation") or "Matched against your saved shows, style preferences, patterns and budget.",
+        "explanation": (ai or {}).get("explanation") or (
+            f"Ranked available garments against the style cues for {body.focus_show_name}. These are similar-style suggestions, not verified outfits from that show."
+            if body.focus_show_name else "Matched against your saved shows, style preferences, patterns and budget."
+        ),
         "source": "gemini" if ai else "catalogue-matcher",
         "model": GEMINI_MODEL if ai else None,
         "show_recommendations": [show["id"] for show in show_recommendations],
         "show_recommendation_details": show_recommendations,
-        "catalogue_source": catalogue["catalogue"],
+        "catalogue_source": {
+            "source": "styleTV curated starter metadata",
+            "count": len(shows),
+            "limit": 450,
+        },
         "interpreted_preferences": (ai or {}).get("interpreted_preferences", {}),
     }
 
