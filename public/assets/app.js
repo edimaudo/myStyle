@@ -40,7 +40,7 @@
   const state = {
     db: null,
     profile: structuredClone(DEFAULT_PROFILE),
-    settings: { theme: 'light', fontSize: 'medium' },
+    settings: { theme: 'light', fontSize: 'medium', walkthroughSeen: false },
     shows: [],
     products: [],
     savedIds: new Set(),
@@ -187,6 +187,74 @@
   function findShow(id) { return state.shows.find(show => show.id === id); }
   function findProduct(id) { return state.products.find(product => product.id === id); }
 
+
+  async function hydrateShowArtwork() {
+    // TVmaze allows direct browser API use and image hotlinking. Cards never use generic fashion photos as show posters.
+    await Promise.all(state.shows.map(async show => {
+      try {
+        const response = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(show.name)}`, { cache: 'force-cache' });
+        if (!response.ok) return;
+        const details = await response.json();
+        show.image = details?.image?.medium || details?.image?.original || null;
+        show.tvmaze_url = details?.url || 'https://www.tvmaze.com/';
+      } catch (_) {
+        show.image = null;
+      }
+    }));
+  }
+
+  function showArtwork(show) {
+    if (show.image) {
+      return `<div class="show-card-image"><img src="${escapeHTML(show.image)}" alt="${escapeHTML(show.name)} show poster" loading="lazy"></div>`;
+    }
+    return `<div class="show-card-image image-unavailable"><div class="show-artwork-fallback"><strong>${escapeHTML(show.name)}</strong><span>Show artwork unavailable</span></div></div>`;
+  }
+
+  function wardrobeSource(show) {
+    return show?.wornontv_url || 'https://wornontv.net/shows/';
+  }
+
+  function wardrobeSourceLabel(show) {
+    return show?.wornontv_direct ? 'View wardrobe on WornOnTV ↗' : 'Browse WornOnTV directory ↗';
+  }
+
+  function wardrobeLinkForProduct(product) {
+    const linkedShows = (product.shows || []).map(findShow).filter(Boolean);
+    return linkedShows.find(show => show.wornontv_direct) || linkedShows[0] || null;
+  }
+
+  let walkthroughIndex = 0;
+  function renderWalkthroughStep() {
+    const panels = $$('.walkthrough-panel');
+    panels.forEach((panel, index) => { panel.hidden = index !== walkthroughIndex; });
+    const back = $('#walkthrough-back');
+    const next = $('#walkthrough-next');
+    if (back) back.hidden = walkthroughIndex === 0;
+    if (next) next.textContent = walkthroughIndex === panels.length - 1 ? 'Start exploring' : 'Continue';
+  }
+
+  function openWalkthrough() {
+    const dialog = $('#walkthrough-dialog');
+    if (!dialog) return;
+    walkthroughIndex = 0;
+    renderWalkthroughStep();
+    if (typeof dialog.showModal === 'function') {
+      if (!dialog.open) dialog.showModal();
+    } else {
+      dialog.setAttribute('open', '');
+    }
+  }
+
+  async function closeWalkthrough(markSeen = true) {
+    const dialog = $('#walkthrough-dialog');
+    if (markSeen) {
+      state.settings.walkthroughSeen = true;
+      try { await saveSettings(); } catch (_) { /* the walkthrough can still close without local persistence */ }
+    }
+    if (dialog?.open && typeof dialog.close === 'function') dialog.close();
+    else dialog?.removeAttribute('open');
+  }
+
   function renderFavoriteShows() {
     const target = $('#favorite-shows');
     if (!target) return;
@@ -198,17 +266,31 @@
     }
     target.innerHTML = chosen.slice(0, 5).map(show => `
       <article class="show-card">
-        <div class="show-card-image"><img src="${escapeHTML(show.image)}" alt="Style inspiration for ${escapeHTML(show.name)}" loading="lazy" onerror="this.style.display='none'"></div>
-        <div class="show-card-content"><h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p><button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore the looks <span aria-hidden="true">→</span></button></div>
+        ${showArtwork(show)}
+        <div class="show-card-content"><h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p><button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore style matches</button><a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a></div>
       </article>`).join('');
+    bindShowArtworkFallbacks(target);
   }
 
   function renderShowCard(show, isFavorite, showAction = true) {
     const tags = (show.tags || []).slice(0, 3).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
     return `<article class="show-card" data-show-card="${escapeHTML(show.id)}">
-      <div class="show-card-image"><img src="${escapeHTML(show.image)}" alt="Style inspiration associated with ${escapeHTML(show.name)}" loading="lazy" onerror="this.style.display='none'"></div>
+      ${showArtwork(show)}
       <div class="show-card-content"><h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p><div class="show-aesthetic-tags">${tags}</div>
-      <div class="show-action-row">${showAction ? `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="${isFavorite}">${isFavorite ? 'Added to my shows ✓' : 'Add to my shows +'}</button>` : ''}<button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore looks</button></div></div></article>`;
+      <div class="show-action-row">${showAction ? `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="${isFavorite}">${isFavorite ? 'Added to my shows ✓' : 'Add to my shows +'}</button>` : ''}<button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore looks</button></div>
+      <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a></div></article>`;
+  }
+
+  function bindShowArtworkFallbacks(target) {
+    if (!target) return;
+    $$('.show-card-image img', target).forEach(img => img.addEventListener('error', () => {
+      const card = img.closest('.show-card-image');
+      const showName = img.alt.replace(/ show poster$/, '');
+      if (card) {
+        card.classList.add('image-unavailable');
+        card.innerHTML = `<div class="show-artwork-fallback"><strong>${escapeHTML(showName)}</strong><span>Show artwork unavailable</span></div>`;
+      }
+    }, { once: true }));
   }
 
   function renderShows(filter = '') {
@@ -219,13 +301,13 @@
     const notFavorite = visible.filter(show => !favorites.has(show.id));
     const allTarget = $('#all-shows-grid');
     const newTarget = $('#new-shows-grid');
-    if (allTarget) allTarget.innerHTML = visible.length ? visible.map(show => renderShowCard(show, favorites.has(show.id))).join('') : '<div class="no-results">No shows matched that search. Try a style, a pattern, or a different title.</div>';
+    if (allTarget) { allTarget.innerHTML = visible.length ? visible.map(show => renderShowCard(show, favorites.has(show.id))).join('') : '<div class="no-results">No shows matched that search. Try a style, a pattern, or a different title.</div>'; bindShowArtworkFallbacks(allTarget); }
     if (newTarget) {
       const profileTags = new Set((state.profile.styleTags || []).map(x => x.toLowerCase()));
       const profilePatterns = new Set((state.profile.patterns || []).map(x => x.toLowerCase()));
       const score = show => show.tags.reduce((total, tag) => total + (profileTags.has(tag.toLowerCase()) ? 2 : 0) + (profilePatterns.has(tag.toLowerCase()) ? 1 : 0), 0);
       notFavorite.sort((a, b) => score(b) - score(a));
-      newTarget.innerHTML = notFavorite.length ? notFavorite.slice(0, 4).map(show => renderShowCard(show, false)).join('') : '<div class="no-results">You have added every show in this demo catalogue. Try another search or remove a favourite.</div>';
+      newTarget.innerHTML = notFavorite.length ? notFavorite.slice(0, 4).map(show => renderShowCard(show, false)).join('') : '<div class="no-results">You have added every show in this demo catalogue. Try another search or remove a favourite.</div>'; bindShowArtworkFallbacks(newTarget);
     }
     if ($('#favorite-shows')) renderFavoriteShows();
   }
@@ -245,6 +327,7 @@
   function renderProduct(product) {
     const saved = state.savedIds.has(product.id);
     const showNames = (product.shows || []).map(id => findShow(id)?.name).filter(Boolean);
+    const wardrobeShow = wardrobeLinkForProduct(product);
     const swatches = (product.swatches || []).map((color, index) => {
       const label = product.colors?.[index] || `Colour ${index + 1}`;
       return `<button type="button" class="color-swatch" data-color-select="${escapeHTML(product.id)}" data-color="${escapeHTML(label)}" style="background:${escapeHTML(color)}" aria-label="Search for ${escapeHTML(label)} alternatives to ${escapeHTML(product.name)}" title="Search ${escapeHTML(label)} alternatives" aria-pressed="${index === 0}"></button>`;
@@ -253,6 +336,7 @@
       <div class="product-photo"><img src="${escapeHTML(product.image)}" alt="Style reference for ${escapeHTML(product.name)}" loading="lazy" onerror="this.style.display='none'"><span class="product-tag">${escapeHTML(product.category)}</span><button type="button" class="save-look" data-save-product="${escapeHTML(product.id)}" aria-label="${saved ? 'Remove' : 'Save'} ${escapeHTML(product.name)}" aria-pressed="${saved}">${saved ? '♥' : '♡'}</button></div>
       <div class="product-content"><h3>${escapeHTML(product.name)}</h3><p class="product-description">${escapeHTML(product.reason)}</p>
       <p class="product-showline">Style cues from ${escapeHTML(showNames.join(' · ') || 'your style profile')}</p>
+      ${wardrobeShow ? `<a class="product-wardrobe-link" href="${escapeHTML(wardrobeSource(wardrobeShow))}" target="_blank" rel="noopener noreferrer">Explore ${escapeHTML(wardrobeShow.name)} wardrobe on WornOnTV ↗</a>` : ''}
       <div class="product-price-row"><span class="product-price">Around $${Number(product.price).toFixed(0)}</span><span class="product-price-note">${escapeHTML(product.price_note || 'sample price')}</span></div>
       <div class="swatch-row" aria-label="Colour ideas to explore">${swatches}</div>
       <div class="product-actions"><button type="button" class="button button-primary" data-try-on="${escapeHTML(product.id)}">Try this look</button><a class="button button-outline" data-shop-product="${escapeHTML(product.id)}" href="${escapeHTML(product.shop_url)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a></div>
@@ -612,6 +696,15 @@
     $('#quiz-form')?.addEventListener('submit', runQuizSubmit);
     $('#try-on-form')?.addEventListener('submit', submitTryOn);
     $('#run-color-analysis')?.addEventListener('click', runColorAnalysis);
+    $('#open-walkthrough')?.addEventListener('click', openWalkthrough);
+    $('#walkthrough-back')?.addEventListener('click', () => { walkthroughIndex = Math.max(0, walkthroughIndex - 1); renderWalkthroughStep(); });
+    $('#walkthrough-next')?.addEventListener('click', async () => {
+      const count = $$('.walkthrough-panel').length;
+      if (walkthroughIndex >= count - 1) await closeWalkthrough(true);
+      else { walkthroughIndex += 1; renderWalkthroughStep(); }
+    });
+    $('#walkthrough-skip')?.addEventListener('click', () => closeWalkthrough(true));
+    $('#close-walkthrough')?.addEventListener('click', () => closeWalkthrough(true));
     $('#try-on-dialog')?.addEventListener('click', event => { if (event.target === $('#try-on-dialog')) closeTryOn(); });
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('#try-on-dialog')?.open) closeTryOn(); });
   }
@@ -632,6 +725,7 @@
       state.shows = catalog.shows || [];
       state.products = catalog.products || [];
       state.config = config;
+      await hydrateShowArtwork();
       renderProfileChoices();
       renderFavoriteShows();
       renderShows('');
@@ -642,6 +736,7 @@
           : 'Using built-in matching. Add GEMINI_API_KEY to enable natural-language AI personalization.';
       }
       buildQuizFromProfile();
+      if (!state.settings.walkthroughSeen) openWalkthrough();
     } catch (error) {
       showAlert(error.message || 'Could not load styleTV data.', 'error');
     }

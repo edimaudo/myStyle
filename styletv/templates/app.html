@@ -36,9 +36,8 @@
         <button class="side-nav-link" data-view="quiz"><span aria-hidden="true">✳</span> Style quiz</button>
         <button class="side-nav-link" data-view="profile"><span aria-hidden="true">◉</span> My style profile</button>
         <button class="side-nav-link" data-view="saved"><span aria-hidden="true">♡</span> Saved looks</button>
+        <button class="side-nav-link help-nav-link" type="button" id="open-walkthrough">How styleTV works</button>
       </nav>
-      <div class="sidebar-card"><span class="sidebar-card-mark" aria-hidden="true">✳</span><h3>New looks, same you.</h3><p>Update your tastes whenever they change. Your recommendations change with you.</p><button class="text-link" data-go-view="profile">Edit my profile <span aria-hidden="true">→</span></button></div>
-      <div class="sidebar-foot"><span class="status-dot"></span> Demo profile · This browser</div>
     </aside>
 
     <main id="app-main" class="app-main" tabindex="-1">
@@ -71,6 +70,7 @@
         <div class="search-panel show-search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="show-search">Search shows</label><input id="show-search" type="search" placeholder="Search shows or styles, like alternative, plaid or retro"><button class="button button-primary" id="clear-show-search" type="button">Clear</button></div>
         <div class="section-heading-row"><div><h2>Browse shows</h2><p>Your favourites are marked. Add or remove shows at any time.</p></div></div>
         <div id="all-shows-grid" class="show-grid"></div>
+        <p class="source-attribution">Show posters and metadata are provided by <a href="https://www.tvmaze.com/" target="_blank" rel="noopener noreferrer">TVmaze</a>. Use the WornOnTV links on show cards to explore the original wardrobe listings.</p>
         <section id="new-shows-section" class="new-shows-section"><div class="section-heading-row"><div><h2>Try a new series for the wardrobe</h2><p>Recommended from the aesthetics you like and the shows you haven't picked yet.</p></div></div><div id="new-shows-grid" class="show-grid"></div></section>
       </section>
 
@@ -100,6 +100,35 @@
   <dialog id="try-on-dialog" class="try-on-dialog" aria-labelledby="try-on-title">
     <div class="dialog-header"><div><h2 id="try-on-title">Try this look on.</h2></div><button class="dialog-close" type="button" aria-label="Close virtual try-on">×</button></div>
     <div class="dialog-content"><div id="try-on-product" class="try-on-product"></div><form id="try-on-form"><label class="upload-label" for="try-on-photo">Upload a clear upper-body photo (JPG or PNG)</label><input id="try-on-photo" type="file" accept="image/jpeg,image/png" required><div class="photo-guidance"><strong>For a better result</strong><p>Use a clear, well-lit, front-facing photo with one person, face visible and shoulders in frame. Follow the provider image guidance; some reference garment categories may require a different framing.</p></div><label class="consent-line"><input id="try-on-consent" type="checkbox" required><span>I consent to sending this photo and the selected garment reference to YouCam for virtual try-on processing.</span></label><button class="button button-primary button-large button-full" type="submit">Generate my preview <span aria-hidden="true">→</span></button><p class="small-note">Your photo is sent to YouCam under its service retention terms and is not stored by styleTV. The result is a visual preview, not a sizing or fit guarantee.</p></form><div id="try-on-status" class="try-on-status" aria-live="polite" hidden></div><div id="try-on-result" class="try-on-result" hidden></div></div>
+  </dialog>
+
+  <dialog id="walkthrough-dialog" class="walkthrough-dialog" aria-labelledby="walkthrough-title" aria-describedby="walkthrough-description">
+    <div class="dialog-header">
+      <div><h2 id="walkthrough-title">How styleTV works</h2></div>
+      <button class="dialog-close" type="button" id="close-walkthrough" aria-label="Close walkthrough">×</button>
+    </div>
+    <div class="dialog-content">
+      <section class="walkthrough-panel" data-walkthrough-panel="0">
+        <p class="walkthrough-eyebrow">Explore shows</p>
+        <h3>Start with the shows you love.</h3>
+        <p id="walkthrough-description">Search the catalogue and add favourite shows. Show cards use show-specific poster artwork, and WornOnTV links open the original wardrobe listings where available.</p>
+      </section>
+      <section class="walkthrough-panel" data-walkthrough-panel="1" hidden>
+        <p class="walkthrough-eyebrow">Make it personal</p>
+        <h3>Shape recommendations around your taste.</h3>
+        <p>Use the style quiz or edit your profile to set patterns, colours, boldness and a budget. Recommendations update when your preferences or favourite shows change. Facial colour analysis is optional.</p>
+      </section>
+      <section class="walkthrough-panel" data-walkthrough-panel="2" hidden>
+        <p class="walkthrough-eyebrow">Preview and shop</p>
+        <h3>Try a look before you decide.</h3>
+        <p>Choose a supported garment, upload a photo with your consent, and use YouCam to generate a visual preview. Compare available colour ideas, save looks and follow retailer links for similar items.</p>
+      </section>
+    </div>
+    <div class="walkthrough-actions">
+      <button type="button" class="button button-outline" id="walkthrough-back" hidden>Back</button>
+      <button type="button" class="text-link" id="walkthrough-skip">Skip walkthrough</button>
+      <button type="button" class="button button-primary" id="walkthrough-next">Continue</button>
+    </div>
   </dialog>
   <div id="dialog-backdrop" class="dialog-backdrop" hidden></div>
 </body>

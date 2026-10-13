@@ -1,8 +1,8 @@
 """Curated demo catalogue for styleTV.
 
-Images are mood references, not official show stills or guaranteed purchasable
-products. Replace catalogue data with licensed imagery and verified product
-feeds before a public retail launch.
+Show artwork is loaded from the TVmaze public API at runtime. Outfit imagery
+is fashion inspiration rather than verified screen-worn wardrobe. Replace demo
+product records with licensed imagery and verified product feeds before launch.
 """
 from __future__ import annotations
 
@@ -12,48 +12,60 @@ SHOWS = [
         "name": "Wednesday",
         "description": "Dark academia, sharp tailoring and a little rebellion.",
         "tags": ["dark", "alternative", "tailoring", "monochrome", "punk"],
-        "image": "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=900&q=85",
+        "image": None,
         "palette": ["#111827", "#e5e7eb", "#64748b"],
+        "wornontv_url": "https://wornontv.net/wednesday/",
+        "wornontv_direct": True,
     },
     {
         "id": "stranger-things",
         "name": "Stranger Things",
         "description": "Retro layers, denim, vintage graphics and plaid.",
         "tags": ["retro", "denim", "graphic", "plaid", "casual", "punk"],
-        "image": "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=900&q=85",
+        "image": None,
         "palette": ["#1f2937", "#a23b35", "#d6b98c"],
+        "wornontv_url": "https://wornontv.net/stranger-things/",
+        "wornontv_direct": True,
     },
     {
         "id": "euphoria",
         "name": "Euphoria",
         "description": "Expressive colour, statement pieces and experimental styling.",
         "tags": ["bold", "colour", "experimental", "pattern", "streetwear"],
-        "image": "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=900&q=85",
+        "image": None,
         "palette": ["#6b3fa0", "#e56b9f", "#222a68"],
+        "wornontv_url": "https://wornontv.net/euphoria/",
+        "wornontv_direct": True,
     },
     {
         "id": "the-bear",
         "name": "The Bear",
         "description": "Utility layers, workwear, easy basics and practical outerwear.",
         "tags": ["workwear", "utility", "minimal", "casual", "layering"],
-        "image": "https://images.unsplash.com/photo-1523398002811-999ca8dec234?auto=format&fit=crop&w=900&q=85",
+        "image": None,
         "palette": ["#263a2b", "#d8d2c5", "#413c39"],
+        "wornontv_url": "https://wornontv.net/shows/",
+        "wornontv_direct": False,
     },
     {
         "id": "heartstopper",
         "name": "Heartstopper",
         "description": "Relaxed knitwear, classic checks and soft everyday layers.",
         "tags": ["knitwear", "preppy", "plaid", "casual", "colour"],
-        "image": "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=900&q=85",
+        "image": None,
         "palette": ["#f1c9bf", "#4b6b55", "#f6eadb"],
+        "wornontv_url": "https://wornontv.net/heartstopper/",
+        "wornontv_direct": True,
     },
     {
         "id": "the-last-of-us",
         "name": "The Last of Us",
         "description": "Functional layers, weathered textures and rugged utility.",
         "tags": ["utility", "rugged", "layering", "earthy", "casual"],
-        "image": "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=85",
+        "image": None,
         "palette": ["#5b6544", "#7d4e35", "#b7ab8f"],
+        "wornontv_url": "https://wornontv.net/shows/",
+        "wornontv_direct": False,
     },
 ]
 
