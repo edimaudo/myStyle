@@ -1,4 +1,4 @@
-# styleTV — TV-inspired personal fashion discovery
+# myStyle —
 
 A web app for exploring TV-inspired fashion, maintaining an editable style profile, discovering new shows, saving looks, exploring colour ideas
 
