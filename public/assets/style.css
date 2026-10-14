@@ -503,3 +503,48 @@ input[type="file"]::file-selector-button { border: 1px solid var(--line); border
   .show-strip .show-card-content { padding: 15px; }
   .show-action-row { flex-direction: column; }
 }
+
+/* Daytime programme imagery: broad editorial frames reduce awkward crops. */
+.show-card-visual { min-width: 0; background: var(--surface-muted, #f3f2ef); }
+.show-card-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  isolation: isolate;
+  background: linear-gradient(135deg, #dad8d3 0%, #eee9e1 48%, #c8d0d7 100%);
+}
+.show-card-media img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 32%;
+  background: var(--surface-muted, #f3f2ef);
+}
+.show-card-media[data-image-state="error"] img { display: none; }
+.show-card-image-fallback {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-content: center;
+  justify-items: start;
+  gap: 8px;
+  padding: clamp(16px, 4vw, 30px);
+  color: #20242d;
+  background:
+    radial-gradient(ellipse at 85% 12%, rgba(255,255,255,.85), transparent 40%),
+    linear-gradient(130deg, #eadfd4 0%, #e5c8be 46%, #cad9da 100%);
+}
+.show-card-media[data-image-state="error"] .show-card-image-fallback { display: grid; }
+.show-card-image-kicker { font-size: .62rem; line-height: 1.2; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; }
+.show-card-image-name { max-width: 95%; font-family: Georgia, "Times New Roman", serif; font-weight: 700; font-size: clamp(1rem, 2.3vw, 1.85rem); line-height: 1.04; letter-spacing: -.035em; }
+.show-card-image-credit { min-height: 23px; padding: 5px 14px 0; color: var(--ink-faint); font-size: .62rem; line-height: 1.35; text-align: right; }
+.show-card-image-credit a { color: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.show-card-image-credit a:hover { color: var(--blue-ink); text-decoration-color: currentColor; }
+.show-card-visual + .show-card-content { padding-top: 10px; }
+@media (max-width: 560px) {
+  .show-card-image-credit { padding-inline: 12px; }
+}

@@ -453,3 +453,24 @@ def test_find_my_looks_is_enabled_after_local_catalogue_and_renders_local_first(
     assert 'Discovery never waits for an external show catalogue.' in app_js
     assert '@app.get("/api/shows")' not in main_source
     assert 'curated daytime shows and demo products' in main_source
+
+
+def test_every_daytime_show_has_programme_image_and_source_credit():
+    shows = main.SHOWS
+    assert len(shows) == 17
+    assert all(item.get('image_url', '').startswith('https://') for item in shows)
+    assert all(item.get('image_source_url', '').startswith('https://') for item in shows)
+    assert all(item.get('image_credit') for item in shows)
+
+
+def test_show_card_image_markup_has_fallback_and_responsive_frames():
+    from pathlib import Path
+    js = Path('public/assets/app.js').read_text()
+    css = Path('public/assets/style.css').read_text()
+    assert 'function showImageMarkup(show)' in js
+    assert 'data-show-card-image' in js
+    assert "image.addEventListener('error'" in js
+    assert 'show-card-image-fallback' in js
+    assert '.show-card-media {' in css
+    assert 'aspect-ratio: 16 / 9' in css
+    assert 'object-fit: cover' in css

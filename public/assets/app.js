@@ -254,6 +254,31 @@
     else dialog?.removeAttribute('open');
   }
 
+  function showImageMarkup(show) {
+    const image = show.image_url;
+    const credit = show.image_credit || 'Image source';
+    const sourceUrl = show.image_source_url;
+    const fallback = `<div class="show-card-image-fallback" aria-hidden="true"><span class="show-card-image-kicker">Daytime style</span><span class="show-card-image-name">${escapeHTML(show.name)}</span></div>`;
+    const media = image
+      ? `<div class="show-card-media" data-image-state="loading"><img data-show-card-image src="${escapeHTML(image)}" alt="Promotional image for ${escapeHTML(show.name)}" loading="lazy" decoding="async">${fallback}</div>`
+      : `<div class="show-card-media" data-image-state="error">${fallback}</div>`;
+    const attribution = sourceUrl
+      ? `<div class="show-card-image-credit">Image: <a href="${escapeHTML(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHTML(credit)}</a></div>`
+      : `<div class="show-card-image-credit">${escapeHTML(credit)}</div>`;
+    return `<div class="show-card-visual">${media}${attribution}</div>`;
+  }
+
+  function bindShowCardImages(root = document) {
+    root.querySelectorAll('img[data-show-card-image]').forEach(image => {
+      if (image.dataset.imageHandlers === 'bound') return;
+      image.dataset.imageHandlers = 'bound';
+      const update = stateName => image.closest('.show-card-media')?.setAttribute('data-image-state', stateName);
+      image.addEventListener('load', () => update('loaded'), { once: true });
+      image.addEventListener('error', () => update('error'), { once: true });
+      if (image.complete) update(image.naturalWidth > 0 ? 'loaded' : 'error');
+    });
+  }
+
   function renderFavoriteShows() {
     const target = $('#favorite-shows');
     if (!target) return;
@@ -265,6 +290,7 @@
     }
     target.innerHTML = chosen.slice(0, 5).map(show => `
       <article class="show-card">
+        ${showImageMarkup(show)}
         <div class="show-card-content">
           <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
           <h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>
@@ -272,12 +298,14 @@
           <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a>
         </div>
       </article>`).join('');
+    bindShowCardImages(target);
   }
 
   function renderShowCard(show, isFavorite, showAction = true) {
     const visibleTags = show.tags || [];
     const tags = visibleTags.slice(0, 4).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
     return `<article class="show-card" data-show-card="${escapeHTML(show.id)}">
+      ${showImageMarkup(show)}
       <div class="show-card-content">
         <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
         <h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>
@@ -359,6 +387,8 @@
         ? recommendations.slice(0, 4).map(show => renderShowCard(show, false)).join('')
         : '<div class="no-results">You have added every daytime show. Remove a favourite to see more options.</div>';
     }
+    bindShowCardImages(allTarget || document);
+    bindShowCardImages(newTarget || document);
     if ($('#favorite-shows')) renderFavoriteShows();
   }
 

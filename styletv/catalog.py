@@ -11,6 +11,9 @@ SHOWS = [
     {
         "id": "beyond-the-gates",
         "name": "Beyond the Gates",
+        "image_url": "https://cdn.soapoperanetwork.com/media/2026/01/3138847_00837b-edited-scaled.jpg.optimal.jpg",
+        "image_source_url": "https://www.soapoperanetwork.com/2026/01/beyond-the-gates-official-cast-photo",
+        "image_credit": "Soap Opera Network",
         "category": "Daytime soap",
         "description": "Glamorous daywear, expressive colour, statement prints and polished occasion looks.",
         "tags": ["tailoring", "bold", "floral", "pattern", "statement", "layering"],
@@ -20,6 +23,9 @@ SHOWS = [
     {
         "id": "days-of-our-lives",
         "name": "Days of our Lives",
+        "image_url": "https://www.tvinsider.com/wp-content/uploads/2022/08/NUP_191830_3965-e1661820106700-1014x570.jpg",
+        "image_source_url": "https://www.tvinsider.com/1058336/days-of-our-lives-peacock-episode-length/",
+        "image_credit": "TV Insider",
         "category": "Daytime soap",
         "description": "Classic everyday outfits, tailored jackets, patterned tops and polished casual looks.",
         "tags": ["tailoring", "preppy", "bold", "floral", "layering", "plaid"],
@@ -29,6 +35,9 @@ SHOWS = [
     {
         "id": "general-hospital",
         "name": "General Hospital",
+        "image_url": "https://cdn1.edgedatg.com/aws/v2/abc/GeneralHospital/showimages/df52f1913fdf2e20e8cf08c1247203cb/1200x676-Q75_df52f1913fdf2e20e8cf08c1247203cb.jpg",
+        "image_source_url": "https://abc.com/show/dfb4bf14-9ed3-4a32-a3d6-128434d2e5e7/about-the-show",
+        "image_credit": "ABC",
         "category": "Daytime soap",
         "description": "Wearable character style spanning casual-chic layers, colour and smart separates.",
         "tags": ["minimal", "tailoring", "floral", "layering", "bold", "casual"],
@@ -38,6 +47,9 @@ SHOWS = [
     {
         "id": "the-bold-and-the-beautiful",
         "name": "The Bold and the Beautiful",
+        "image_url": "https://statico.soapcentral.com/editor/2025/09/11f8d-17573731729424.jpg",
+        "image_source_url": "https://www.soapcentral.com/bold-and-beautiful/news-fall-preview-new-season-premiere-the-bold-beautiful-spoilers-luna-steffy-brooke-taylor-liam-and-more",
+        "image_credit": "SoapCentral",
         "category": "Daytime soap",
         "description": "Fashion-forward tailoring, sleek separates and refined statement pieces.",
         "tags": ["tailoring", "minimal", "bold", "pattern", "workwear"],
@@ -47,6 +59,9 @@ SHOWS = [
     {
         "id": "the-young-and-the-restless",
         "name": "The Young and the Restless",
+        "image_url": "https://public-assets-pressexpress.s3.amazonaws.com/assets/releases/docimages/6914/963477-517424/57349daa4061c54be5848c11badaec1e.jpg",
+        "image_source_url": "https://www.paramountpressexpress.com/cbs-entertainment/releases/?view=54497-cbs-and-sony-pictures-television-announce-agreement-for-renewal-of-daytimes-1-drama-the-young-and-the-restless-through-2024",
+        "image_credit": "Paramount Press Express",
         "category": "Daytime soap",
         "description": "Elevated workwear, confident tailoring and polished everyday outfits.",
         "tags": ["tailoring", "bold", "layering", "minimal", "pattern", "workwear"],
@@ -56,6 +71,9 @@ SHOWS = [
     {
         "id": "live-with-kelly-and-mark",
         "name": "Live with Kelly and Mark",
+        "image_url": "https://www.laughingplace.com/uploads/media/2025/05/23/live-with-kelly-and-mark-guests-week-of-may-26-30.jpeg/w936",
+        "image_source_url": "https://www.laughingplace.com/disney-entertainment/live-with-kelly-and-mark-guest-list-week-of-may-26-30/",
+        "image_credit": "Laughing Place",
         "category": "Daytime talk show",
         "description": "Approachable host style with bright colour, easy layers and occasion-ready pieces.",
         "tags": ["bold", "tailoring", "floral", "stripes", "casual", "layering"],
@@ -65,6 +83,9 @@ SHOWS = [
     {
         "id": "good-morning-america",
         "name": "Good Morning America",
+        "image_url": "https://s.abcnews.com/images/Entertainment/ABC_anchors_GMA_ml_160920_16x9_992.jpg?w=1600",
+        "image_source_url": "https://abcnews.com/GMA/part-times-square-audience/story?id=12883468",
+        "image_credit": "ABC News",
         "category": "Morning show",
         "description": "Camera-ready workwear, modern tailoring and lively colour combinations.",
         "tags": ["tailoring", "workwear", "bold", "layering", "floral", "stripes"],
@@ -74,6 +95,9 @@ SHOWS = [
     {
         "id": "today",
         "name": "Today",
+        "image_url": "https://images.squarespace-cdn.com/content/v1/5357d717e4b0d988ab9e5ca9/1717700785176-HG3MHN6XVGRU3CQ7SCER/NRC_6338.jpg?format=2500w",
+        "image_source_url": "https://adriannabrach.com/",
+        "image_credit": "Adrianna Brach",
         "category": "Morning show",
         "description": "Smart-casual layers, confident colour and practical polished outfits.",
         "tags": ["workwear", "tailoring", "layering", "casual", "stripes", "plaid"],
@@ -83,6 +107,9 @@ SHOWS = [
     {
         "id": "the-view",
         "name": "The View",
+        "image_url": "https://hermes.media.static.aol.com/media/2026/09/04/ce894fd6-8fe1-3064-b8c7-74108750ad8c/94237c14-0672-4de2-ab80-5a3ffe2af446.jpg",
+        "image_source_url": "https://www.aol.com/articles/view-unveils-upcoming-season-30-143858000.html",
+        "image_credit": "AOL",
         "category": "Daytime talk show",
         "description": "Expressive panel-show style with strong blazers, statement pieces and colour.",
         "tags": ["tailoring", "bold", "experimental", "pattern", "workwear", "floral"],
@@ -92,6 +119,9 @@ SHOWS = [
     {
         "id": "cbs-mornings",
         "name": "CBS Mornings",
+        "image_url": "https://daytimeconfidential.com/.image/c_limit%2Ccs_srgb%2Cfl_progressive%2Cq_auto%3Agood%2Cw_700/MjA4NjE0NjUzNTUzNTUwNjQz/cbs-mornings.jpg",
+        "image_source_url": "https://daytimeconfidential.com/2024/08/16/cbs-mornings-to-debut-3rd-hour-in-september",
+        "image_credit": "Daytime Confidential",
         "category": "Morning news",
         "description": "Clean professional layers, understated tailoring and modern workwear.",
         "tags": ["tailoring", "minimal", "workwear", "layering", "stripes"],
@@ -101,6 +131,9 @@ SHOWS = [
     {
         "id": "tamron-hall-show",
         "name": "Tamron Hall Show",
+        "image_url": "https://image.tmdb.org/t/p/w1280/nAqm5z6Rnbd97mCj25AyDkUy5q2.jpg",
+        "image_source_url": "https://www.themoviedb.org/tv/83754-tamron-hall",
+        "image_credit": "TMDb",
         "category": "Daytime talk show",
         "description": "Bold host looks, strong colour, statement prints and polished silhouettes.",
         "tags": ["bold", "tailoring", "floral", "experimental", "pattern", "layering"],
@@ -110,6 +143,9 @@ SHOWS = [
     {
         "id": "access-hollywood",
         "name": "Access Hollywood",
+        "image_url": "https://s.yimg.com/ny/api/res/1.2/N7S4dH4pm3vCmuxvYFrZrw--/YXBwaWQ9aGlnaGxhbmRlcjt3PTI0MDA7aD0xNjAyO2NmPXdlYnA-/https%3A/media.zenfs.com/en/people_218/02e3298e8c600656006380bc193dd348",
+        "image_source_url": "https://nz.news.yahoo.com/access-hollywood-canceled-30-years-200604770.html",
+        "image_credit": "Yahoo / People",
         "category": "Entertainment news",
         "description": "Contemporary entertainment-news looks, from casual layers to sharp separates.",
         "tags": ["casual", "bold", "layering", "graphic print", "tailoring"],
@@ -119,6 +155,9 @@ SHOWS = [
     {
         "id": "the-drew-barrymore-show",
         "name": "The Drew Barrymore Show",
+        "image_url": "https://s.yimg.com/ny/api/res/1.2/BGkBVqj1bK_b_r3OtZZvSw--/YXBwaWQ9aGlnaGxhbmRlcjt3PTI0MDA7aD0xMzUwO2NmPXdlYnA-/https%3A/media.zenfs.com/en/deadline.com/404998aa945c4d9751cf84880438eb2f",
+        "image_source_url": "https://www.yahoo.com/entertainment/tv/articles/drew-barrymore-show-renewed-2-170000115.html",
+        "image_credit": "Deadline / Yahoo",
         "category": "Daytime talk show",
         "description": "Playful personal style with relaxed tailoring, retro notes and expressive prints.",
         "tags": ["casual", "bold", "retro", "floral", "pattern", "layering"],
@@ -128,6 +167,9 @@ SHOWS = [
     {
         "id": "the-price-is-right",
         "name": "The Price is Right",
+        "image_url": "https://is1-ssl.mzstatic.com/image/thumb/PHxy-47eKBnAgIfSykvMpA/1200x675.jpg",
+        "image_source_url": "https://tv.apple.com/us/show/the-price-is-right/umc.cmc.5gd6zazhb8u3c2max7z4wh2ep",
+        "image_credit": "Apple TV",
         "category": "Daytime game show",
         "description": "Bright, upbeat on-camera style with playful colour and stand-out pieces.",
         "tags": ["bold", "retro", "casual", "graphic print", "layering"],
@@ -137,6 +179,9 @@ SHOWS = [
     {
         "id": "extra",
         "name": "Extra",
+        "image_url": "https://tvseriesfinale.com/wp-content/uploads/2017/08/extra-tv-show-canceled-renewed-e1502289017752.jpg",
+        "image_source_url": "https://tvseriesfinale.com/tv-show/extra-season-24-new-co-hosts-correspondents/",
+        "image_credit": "TV Series Finale",
         "category": "Entertainment news",
         "description": "Celebrity-interview styling with smart casual looks, colour and sharp layers.",
         "tags": ["bold", "casual", "tailoring", "layering", "floral"],
@@ -146,6 +191,9 @@ SHOWS = [
     {
         "id": "the-jennifer-hudson-show",
         "name": "The Jennifer Hudson Show",
+        "image_url": "https://kubrick.htvapps.com/htv-prod-media.s3.amazonaws.com/images/jennifer-hudson-68d579db89475.jpg?crop=1.00xw%3A1.00xh%3B0%2C0&resize=1200%3A%2A",
+        "image_source_url": "https://www.wpbf.com/article/jennifer-hudson-show-season-4/68060402",
+        "image_credit": "WPBF",
         "category": "Daytime talk show",
         "description": "High-energy talk-show fashion with expressive tailoring and statement colour.",
         "tags": ["bold", "experimental", "tailoring", "pattern", "floral", "layering"],
@@ -155,6 +203,9 @@ SHOWS = [
     {
         "id": "nbc-news-daily",
         "name": "NBC News Daily",
+        "image_url": "https://i0.wp.com/www.thewrap.com/wp-content/uploads/2023/08/Zinhle-Essamuah-Kate-Snow-e1691412359713.jpg?ssl=1&w=1200",
+        "image_source_url": "https://www.thewrap.com/nbc-news-daily-anchors-zinhle-essamuah-kate-snow-interview/",
+        "image_credit": "TheWrap",
         "category": "Daytime news",
         "description": "Professional, broadcast-ready workwear with clean shapes and practical layers.",
         "tags": ["workwear", "tailoring", "minimal", "layering", "stripes"],
