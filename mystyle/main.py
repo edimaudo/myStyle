@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import secrets
+from urllib.parse import urlparse
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -81,7 +82,7 @@ def normalize_yce_content_type(content_type: str) -> str:
 
 def yce_headers() -> dict[str, str]:
     if not YCE_API_KEY:
-        raise HTTPException(status_code=503, detail="YouCam skin analysis is not configured. Add YCE_API_KEY to enable live analysis.")
+        raise HTTPException(status_code=503, detail="YouCam is not configured. Add YCE_API_KEY to enable this feature.")
     return {"Authorization": f"Bearer {YCE_API_KEY}", "Content-Type": "application/json"}
 
 
@@ -542,6 +543,84 @@ async def color_analysis(request: Request, photo: UploadFile = File(...), consen
     except (KeyError, TypeError) as exc:
         raise HTTPException(status_code=502, detail="YouCam did not return a skin analysis task ID.") from exc
     return {"task_id": task_id, "task_kind": "color", "message": "YouCam is analyzing detected facial colour tones."}
+
+
+@app.post("/api/try-on")
+async def try_on(request: Request, photo: UploadFile = File(...), item_image_url: str = Form(...), consent: bool = Form(...)):
+    """Run YouCam Clothes V4 using the user's photo and a catalogue style image."""
+    require_session(request)
+    if not consent:
+        raise HTTPException(status_code=400, detail="Consent is required before sending photos to YouCam.")
+    content_type = (photo.content_type or "").lower()
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=415, detail="Use a JPG or PNG photo.")
+    photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
+    if not photo_bytes or len(photo_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Choose a photo smaller than 9.5 MB.")
+    parsed = urlparse(item_image_url)
+    if parsed.scheme != "https" or parsed.hostname not in {"images.unsplash.com", "images.pexels.com"}:
+        raise HTTPException(status_code=400, detail="The selected style image is not from an approved image source.")
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        image_response = await client.get(item_image_url)
+        if image_response.is_error:
+            raise HTTPException(status_code=502, detail="Could not load the selected style image. Choose another style.")
+        style_bytes = image_response.content
+        style_type = image_response.headers.get("content-type", "image/jpeg").split(";")[0].lower()
+    if style_type not in ALLOWED_IMAGE_TYPES or not style_bytes or len(style_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=415, detail="The selected style image is not a supported JPG or PNG under 9.5 MB.")
+    person_id = await upload_image_to_yce(photo_bytes, photo.filename or "mystyle-person.jpg", content_type)
+    style_id = await upload_image_to_yce(style_bytes, "mystyle-style-reference.jpg", style_type)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(f"{YCE_BASE}/s2s/v2.0/task/cloth-v4", headers=yce_headers(), json={"src_file_id": person_id, "ref_file_id": style_id, "garment_category": "auto"})
+        if response.is_error:
+            logger.warning("YouCam Clothes V4 task creation failed: %s", response.status_code)
+            raise HTTPException(status_code=502, detail="YouCam could not start the virtual try-on. Check API access and remaining units.")
+        try:
+            payload = response.json()
+            task_id = payload["data"]["task_id"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(status_code=502, detail="YouCam returned an unexpected try-on task response.") from exc
+    return {"task_id": str(task_id), "task_kind": "try-on", "message": "YouCam is generating your virtual try-on."}
+
+
+def find_output_image_url(value: Any) -> str | None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key.lower() in {"image_url", "url", "result_url", "preview_url"} and isinstance(item, str) and item.startswith("https://"):
+                if any(part in key.lower() for part in ("image", "result", "preview")) or key.lower() == "url":
+                    return item
+            found = find_output_image_url(item)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = find_output_image_url(item)
+            if found:
+                return found
+    return None
+
+
+@app.get("/api/tasks/try-on/{task_id:path}")
+async def try_on_task_status(task_id: str, request: Request):
+    require_session(request)
+    if not task_id or len(task_id) > 512 or ".." in task_id:
+        raise HTTPException(status_code=400, detail="Invalid task ID.")
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        response = await client.get(f"{YCE_BASE}/s2s/v2.0/task/cloth-v4/{task_id}", headers=yce_headers())
+        if response.is_error:
+            raise HTTPException(status_code=502, detail="Could not retrieve the YouCam try-on status. Retry in a moment.")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail="YouCam returned an unexpected try-on status response.") from exc
+    status = extract_task_status(payload)
+    result: dict[str, Any] = {"status": status, "task_kind": "try-on"}
+    if status == "error":
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        result["message"] = data.get("error_message") or payload.get("error_message") or "YouCam could not complete this virtual try-on."
+    elif status == "success":
+        result["image_url"] = find_output_image_url(payload)
+    return result
 
 
 @app.get("/api/tasks/color/{task_id:path}")

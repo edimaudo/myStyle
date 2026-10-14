@@ -254,7 +254,7 @@
     const tags = [...(item.style_tags || []).slice(0, 3), item.category].map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
     return `<article class="style-card" data-item-card="${escapeHTML(item.id)}">
       <div class="style-card-media" data-image-state="loading"><img data-style-image src="${escapeHTML(item.image_url)}" alt="Editorial inspiration for ${escapeHTML(item.name)}" loading="lazy" decoding="async"><div class="style-image-fallback"><span>myStyle inspiration</span><strong>${escapeHTML(item.name)}</strong></div><span class="style-card-season">${escapeHTML(seasonBadge)}</span><button class="save-style-button" data-save-item="${escapeHTML(item.id)}" type="button" aria-pressed="${String(saved)}" aria-label="${saved ? 'Remove from' : 'Save to'} my saved pieces">${saved ? '♥' : '♡'}</button></div>
-      <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A versatile option for your edit.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div><div class="style-card-actions"><a class="button button-primary" href="${escapeHTML(shop)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a>${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}</div><p class="style-card-disclosure">Inspiration image, not an exact retailer product. Search results, current price, stock and sizing are controlled by the retailer.</p></div>
+      <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A versatile option for your edit.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div><div class="style-card-actions"><a class="button button-primary" href="${escapeHTML(shop)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a>${`<button class="button button-outline" data-try-on="${escapeHTML(item.id)}" type="button">Try on this style</button>`}${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}</div></div>
     </article>`;
   }
 
@@ -383,6 +383,67 @@
       button.disabled = false;
       button.textContent = 'Analyze my colours';
     }
+  }
+
+  function openTryOn(itemId) {
+    const item = state.catalog.items.find(entry => entry.id === itemId) || state.recommendations.find(entry => entry.id === itemId);
+    if (!item) { showAlert('Could not find that style. Refresh recommendations and try again.', 'error'); return; }
+    $('#try-on-item-name').textContent = item.name;
+    $('#try-on-item-image').src = item.image_url;
+    $('#try-on-item-image').alt = `Outfit reference for ${item.name}`;
+    $('#try-on-photo').value = '';
+    $('#try-on-consent').checked = false;
+    $('#try-on-result').replaceChildren();
+    const dialog = $('#try-on-dialog');
+    dialog.dataset.itemImage = item.image_url;
+    dialog.dataset.itemName = item.name;
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  }
+
+  async function pollTryOnTask(taskId) {
+    for (let attempt = 0; attempt < 24; attempt++) {
+      await new Promise(resolve => window.setTimeout(resolve, 4000));
+      const result = await apiFetch(`/api/tasks/try-on/${encodeURIComponent(taskId)}`, { method: 'GET' });
+      if (result.status === 'success' || result.status === 'error') return result;
+    }
+    throw new Error('The try-on is taking longer than expected. Check back in a moment.');
+  }
+
+  async function runTryOn() {
+    const dialog = $('#try-on-dialog');
+    const photo = $('#try-on-photo')?.files?.[0];
+    if (!photo) { showAlert('Choose a full-length photo first.', 'error'); return; }
+    if (!$('#try-on-consent')?.checked) { showAlert('Consent is required before sending photos to YouCam.', 'error'); return; }
+    if (!state.config.youcam_configured) { showAlert('Virtual try-on is not configured on this deployment. Add YCE_API_KEY to enable it.', 'error'); return; }
+    if (!['image/jpeg', 'image/png'].includes(photo.type) || !photo.size || photo.size > 9_500_000) { showAlert('Choose a JPG or PNG image smaller than 9.5 MB.', 'error'); return; }
+    const button = $('#run-try-on');
+    const resultPanel = $('#try-on-result');
+    button.disabled = true; button.textContent = 'Preparing try-on…';
+    resultPanel.textContent = 'Sending your photo and selected style to YouCam…';
+    try {
+      const form = new FormData();
+      form.append('photo', photo);
+      form.append('item_image_url', dialog.dataset.itemImage || '');
+      form.append('consent', 'true');
+      const task = await apiFetch('/api/try-on', { method: 'POST', body: form });
+      button.textContent = 'Generating…';
+      const completed = await pollTryOnTask(task.task_id);
+      if (completed.status === 'error') throw new Error(completed.message || 'YouCam could not complete this try-on.');
+      resultPanel.replaceChildren();
+      const message = document.createElement('p');
+      message.textContent = 'Your virtual try-on is ready.';
+      resultPanel.append(message);
+      if (completed.image_url) {
+        const image = document.createElement('img'); image.src = completed.image_url; image.alt = `Virtual try-on result for ${dialog.dataset.itemName || 'selected style'}`;
+        resultPanel.append(image);
+      } else {
+        const note = document.createElement('p'); note.textContent = 'YouCam completed the task but did not return a displayable result image.'; resultPanel.append(note);
+      }
+    } catch (error) {
+      resultPanel.textContent = error.message || 'Could not complete the virtual try-on.';
+      showAlert(resultPanel.textContent, 'error');
+    } finally { button.disabled = false; button.textContent = 'Generate try-on'; }
   }
 
   async function requestRecommendations(query = '') {
@@ -522,7 +583,9 @@
   function attachEvents() {
     document.addEventListener('click', async event => {
       const viewButton = event.target.closest('[data-view]');
-      if (viewButton) { switchView(viewButton.dataset.view); return; }
+      if (viewButton) { switchView(viewButton.dataset.view); const targetId = viewButton.dataset.scrollTo; if (targetId) window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); return; }
+      const tryOnButton = event.target.closest('[data-try-on]');
+      if (tryOnButton) { openTryOn(tryOnButton.dataset.tryOn); return; }
       const saveButton = event.target.closest('[data-save-item]');
       if (saveButton) { await toggleSaved(saveButton.dataset.saveItem); return; }
       const notForMe = event.target.closest('[data-not-for-me]');
@@ -542,6 +605,7 @@
     $('#clear-style-search')?.addEventListener('click', () => { $('#style-search').value = ''; requestRecommendations(''); });
     $('#skin-photo')?.addEventListener('change', setSkinPhotoPreview);
     $('#run-skin-analysis')?.addEventListener('click', runSkinAnalysis);
+    $('#run-try-on')?.addEventListener('click', runTryOn);
   }
 
   async function init() {

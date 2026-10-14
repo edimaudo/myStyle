@@ -813,3 +813,49 @@ body.mystyle-body, body.mystyle-landing, body.mystyle-auth-body { font-family: '
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* myStyle visual cleanup: remove ornamental labels, simplify typography, improve spacing */
+:root { --font-body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body, button, input, select, textarea { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; }
+.eyebrow, .hero-eyebrow, .quiz-step-label, .profile-section-number, .sidebar-kicker, .step-number { display: none !important; }
+.marketing-nav > a[href="#how-it-works"], .marketing-nav > a[href="#what-you-get"] { display: none !important; }
+.mystyle-marketing-footer, .mystyle-footer, .catalogue-disclaimer, .privacy-note { display: none !important; }
+.mystyle-hero { min-height: 0; padding: 26px 0 36px; gap: clamp(28px, 4vw, 56px); }
+.mystyle-hero-copy { min-width: 0; padding: 8px 0; }
+.mystyle-hero h1 { margin: 0 0 18px; line-height: 1.12; }
+.mystyle-hero .page-lede { margin: 0 0 24px; line-height: 1.75; max-width: 570px; }
+.mystyle-hero-visual { height: 410px; gap: 16px; }
+.hero-fashion-image, .hero-palette-card { border-radius: 16px; }
+.mystyle-topbar { min-height: 88px; height: auto; padding: 18px 30px; align-items: center; }
+.topbar-title { margin: 0 0 4px; font-size: 1.25rem; font-weight: 700; letter-spacing: -.035em; }
+.topbar-subtitle { margin: 0; line-height: 1.55; }
+.sidebar-walkthrough { display: grid; gap: 5px; margin: 22px 0 14px; padding: 15px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.sidebar-walkthrough h2 { font: 700 .9rem/1.35 Inter, sans-serif; margin: 0 0 4px; }
+.sidebar-walkthrough button { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 2px; border: 0; background: transparent; color: var(--ink-soft); text-align: left; font-size: .78rem; cursor: pointer; }
+.sidebar-walkthrough button:hover { color: var(--ink); }
+.profile-card-heading { gap: 18px; }
+.profile-card-heading h2 { margin-top: 0; line-height: 1.35; }
+.quiz-layout { gap: 18px; }
+.style-card-actions { flex-wrap: wrap; }
+.try-on-dialog { width: min(760px, calc(100% - 24px)); max-height: 90vh; overflow: auto; padding: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.try-on-dialog::backdrop { background: rgba(12, 16, 14, .6); }
+.try-on-dialog .dialog-header { align-items: center; }
+.try-on-dialog .dialog-header h2 { font-size: 1.4rem; }
+.try-on-reference { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.try-on-reference img { width: 100px; height: 130px; object-fit: cover; border-radius: 10px; background: var(--surface-muted); }
+.try-on-reference p { margin: 0; line-height: 1.6; color: var(--ink-soft); }
+.try-on-dialog label { display: block; margin: 12px 0 7px; font-weight: 600; }
+.try-on-dialog .consent-line { display: flex; align-items: flex-start; gap: 9px; font-weight: 400; }
+#try-on-result { margin-top: 16px; }
+#try-on-result img { display: block; width: 100%; max-width: 420px; margin-top: 12px; border-radius: 12px; }
+@media (max-width: 900px) { .mystyle-hero { grid-template-columns: 1fr; } .mystyle-hero-visual { max-width: 620px; width: 100%; margin-inline: auto; } .sidebar-walkthrough { margin-top: 10px; } }
+@media (max-width: 560px) { .mystyle-topbar { padding: 14px 16px; } .mystyle-hero { padding-top: 16px; } .mystyle-hero-visual { height: 300px; } .try-on-reference { align-items: flex-start; } }
+
+/* Keep the visual language editorial and restrained rather than ornamental. */
+h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero h1 { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; }
+.mystyle-hero-visual, .hero-fashion-image, .hero-palette-card, .quick-palette-panel, .profile-card, .style-card { box-shadow: none; }
+.style-card, .profile-card, .quick-palette-panel { border-radius: 12px; }
+.sidebar-season-card { margin-top: 12px; }
+.style-card-actions [data-try-on] { background: var(--surface); border-color: var(--ink); color: var(--ink); }
+.style-card-actions [data-try-on]:hover { background: var(--surface-muted); }

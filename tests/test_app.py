@@ -40,7 +40,7 @@ def test_landing_page_has_new_brand_and_style_flow(client):
     assert response.status_code == 200
     assert "myStyle" in response.text
     assert "Get dressed like" in response.text
-    assert "style quiz" in response.text.lower()
+    assert "Build my style profile" in response.text
     assert "season" in response.text.lower()
     assert "WornOnTV" not in response.text
 
@@ -255,8 +255,9 @@ def test_app_ui_uses_selfie_only_for_skin_analysis(client):
     response = client.get("/app")
     html = response.text
     assert "Skin and facial colour analysis" in html
-    assert "Your selfie is used for this analysis only" in html
-    assert "try-on" not in html.lower()
+    assert "Use a selfie to identify colour tones" in html
+    assert "try-on-dialog" in html
+    assert "Skin analysis" in html
     script = (__import__("pathlib").Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()
     assert "runSkinAnalysis" in script
     assert "/api/color-analysis" in script
@@ -279,11 +280,12 @@ def test_app_ui_has_style_quiz_custom_palette_and_saved_feedback(client):
 def test_app_ui_discloses_not_live_product_data(client):
     signed_in(client)
     html = client.get("/app").text.lower()
-    assert "not live retailer listings" in html or "illustrative budget targets" in html
-    assert "confirm current prices" in html
+    assert "catalogue-disclaimer" not in html
+    assert "how to use mystyle" in html
+    assert "my style" in html
 
 
-def test_only_skin_analysis_task_endpoint_remains(client):
+def test_skin_analysis_and_try_on_task_endpoints_are_wired(client):
     signed_in(client)
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
@@ -291,7 +293,11 @@ def test_only_skin_analysis_task_endpoint_remains(client):
     html = client.get("/app").text
     assert "app.js" in html
     assert "/api/tasks/color/" in script
-    assert "/api/tasks/try-on/" not in script
+    assert "/api/tasks/try-on/" in script
+    assert "/api/try-on" in script
+    assert "data-try-on" in script
+    from mystyle.main import try_on, try_on_task_status
+    assert callable(try_on) and callable(try_on_task_status)
 
 
 def test_legacy_tv_brand_and_source_have_been_removed_from_runtime_code():
@@ -301,3 +307,21 @@ def test_legacy_tv_brand_and_source_have_been_removed_from_runtime_code():
     joined = "\n".join(path.read_text() for path in files)
     assert "WornOnTV" not in joined
     assert "styleTV" not in joined
+
+
+def test_requested_ux_cleanup_and_sidebar_walkthrough(client):
+    signed_in(client)
+    html = client.get("/app").text
+    assert "How to use myStyle" in html
+    assert 'data-scroll-to="skin-analysis-card"' in html
+    assert "catalogue-disclaimer" not in html
+    assert "mystyle-footer" not in html
+    assert "quiz-step-label" not in html
+    assert "profile-section-number" not in html
+    signin = client.get("/signin").text
+    assert "This is a demo sign-in" not in signin
+    landing = client.get("/").text
+    assert 'href="#how-it-works">How it works' not in landing
+    assert 'href="#what-you-get">Your style edit' not in landing
+    assert "mystyle-marketing-footer" not in landing
+
