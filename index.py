@@ -1,4 +1,4 @@
-"""Vercel entry point for styleTV."""
-from styletv.main import app
+"""Vercel entry point for myStyle."""
+from mystyle.main import app
 
 __all__ = ["app"]

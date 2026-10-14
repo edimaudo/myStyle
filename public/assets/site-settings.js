@@ -2,7 +2,7 @@
   'use strict';
 
   // Shares the exact IndexedDB database and settings record used by app.js.
-  const DB_NAME = 'styletv-db';
+  const DB_NAME = 'mystyle-db';
   const DB_VERSION = 1;
   const SETTINGS_KEY = 'display-settings';
   const defaults = { theme: 'light', fontSize: 'medium' };
@@ -29,7 +29,7 @@
 
   function openDatabase() {
     return new Promise((resolve, reject) => {
-      if (!('indexedDB' in window)) return reject(new Error('IndexedDB is not available.'));
+      if (!('indexedDB' in window)) return reject(new Error('Local browser storage is not available.'));
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;

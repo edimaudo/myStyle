@@ -1,352 +1,303 @@
-import asyncio
+from __future__ import annotations
+
 import re
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from styletv import main
+from mystyle import main
+from mystyle.catalog import ITEMS, PALETTES, STYLE_OPTIONS, OCCASIONS
 
 
-@pytest.fixture
+@pytest.fixture()
 def client():
-    return TestClient(main.app)
+    with TestClient(main.app) as test_client:
+        yield test_client
 
 
-def sign_in(client_instance):
-    page = client_instance.get('/signin')
-    assert page.status_code == 200
-    csrf = re.search(r'name="csrf" value="([^"]+)"', page.text).group(1)
-    response = client_instance.post(
-        '/signin',
-        data={'email': 'demo@styletv.app', 'password': 'styleTV2026', 'csrf': csrf},
+def signed_in(client: TestClient) -> str:
+    response = client.get("/signin")
+    assert response.status_code == 200
+    csrf = re.search(r'name="csrf" value="([^"]+)"', response.text).group(1)
+    response = client.post(
+        "/signin",
+        data={"email": "demo@mystyle.app", "password": "myStyle2026", "csrf": csrf},
         follow_redirects=False,
     )
     assert response.status_code == 303
-    return client_instance
+    app_page = client.get("/app")
+    assert app_page.status_code == 200
+    return re.search(r'<meta name="csrf-token" content="([^"]+)"', app_page.text).group(1)
 
 
-def csrf_for(client_instance):
-    page = client_instance.get('/app').text
-    return re.search(r'<meta name="csrf-token" content="([^"]+)"', page).group(1)
+def test_health_uses_mystyle_brand(client):
+    response = client.get("/health")
+    assert response.json() == {"status": "ok", "app": "myStyle"}
 
 
-def test_landing_page_renders(client):
-    response = client.get('/')
+def test_landing_page_has_new_brand_and_style_flow(client):
+    response = client.get("/")
     assert response.status_code == 200
-    assert 'styleTV' in response.text
-    assert 'The looks you love.' in response.text
+    assert "myStyle" in response.text
+    assert "Get dressed like" in response.text
+    assert "style quiz" in response.text.lower()
+    assert "season" in response.text.lower()
+    assert "WornOnTV" not in response.text
 
 
-def test_app_requires_sign_in(client):
-    response = client.get('/app', follow_redirects=False)
+def test_demo_signin_page_uses_mystyle_credentials_and_brand(client):
+    response = client.get("/signin")
+    assert response.status_code == 200
+    assert "demo@mystyle.app" in response.text
+    assert "myStyle2026" in response.text
+    assert "Sign in — myStyle" in response.text
+
+
+def test_app_route_requires_authentication(client):
+    response = client.get("/app", follow_redirects=False)
     assert response.status_code == 303
-    assert response.headers['location'].startswith('/signin')
+    assert response.headers["location"].startswith("/signin")
 
 
-def test_catalog_contains_daytime_shows_and_no_random_garments(client):
-    authed = sign_in(client)
-    response = authed.get('/api/catalog')
+def test_signin_opens_mystyle_workspace(client):
+    csrf = signed_in(client)
+    response = client.get("/app")
     assert response.status_code == 200
-    payload = response.json()
-    assert len(payload['shows']) >= 15
-    assert all(show['wornontv_url'].startswith('https://wornontv.net/') for show in payload['shows'])
-    assert 'products' not in payload
-    assert 'PRODUCTS' not in Path('styletv/catalog.py').read_text()
+    assert 'data-view="discover"' in response.text
+    assert 'data-view="quiz"' in response.text
+    assert 'data-view="profile"' in response.text
+    assert "WornOnTV" not in response.text
+    assert csrf in response.text
 
 
-def test_recommendations_return_wardrobe_sources_not_fake_products(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'GEMINI_API_KEY', '')
-    response = authed.post(
-        '/api/recommendations',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        json={
-            'query': 'The View',
-            'profile': {'favoriteShows': ['the-view'], 'styleTags': ['tailoring', 'bold'], 'patterns': ['floral'], 'budget': 80},
-            'limit': 4,
-            'focus_show_id': 'the-view',
-        },
-    )
+def test_catalogue_contains_style_items_not_shows(client):
+    csrf = signed_in(client)
+    response = client.get("/api/catalog", headers={"X-CSRF-Token": csrf})
     assert response.status_code == 200
-    payload = response.json()
-    assert payload['source'] == 'profile-ranker'
-    assert payload['ai_status'] == 'not_configured'
-    assert payload['recommendations'][0]['id'] == 'the-view'
-    assert payload['recommendations'][0]['wardrobe_url'] == 'https://wornontv.net/the-view/'
-    assert all(item['wardrobe_url'].startswith('https://wornontv.net/') for item in payload['recommendations'])
-    assert 'products' not in payload
-    assert payload['outfit_listing_mode'] == 'outbound-link'
+    data = response.json()
+    assert len(data["items"]) >= 18
+    assert data["palettes"] == PALETTES
+    assert data["styles"] == STYLE_OPTIONS
+    assert data["occasions"] == OCCASIONS
+    assert "shows" not in data
+    assert {"soft-trench", "white-tee", "wool-coat", "linen-shirt"}.issubset({x["id"] for x in data["items"]})
 
 
-def test_show_recommender_uses_profile_tags_and_excludes_favourites():
-    shows = [
-        {'id': 'a', 'name': 'Programme A', 'category': 'Talk show', 'description': 'A', 'tags': ['tailoring'], 'wornontv_url': 'https://wornontv.net/a/'},
-        {'id': 'b', 'name': 'Programme B', 'category': 'Morning show', 'description': 'B', 'tags': ['punk'], 'wornontv_url': 'https://wornontv.net/b/'},
-        {'id': 'c', 'name': 'Programme C', 'category': 'News', 'description': 'C', 'tags': ['tailoring', 'workwear'], 'wornontv_url': 'https://wornontv.net/c/'},
-    ]
-    ranked = main.rank_show_recommendations(
-        {'favoriteShows': ['a'], 'styleTags': ['workwear'], 'patterns': []}, shows, limit=2
-    )
-    assert [show['id'] for show in ranked] == ['c', 'b']
+def test_catalogue_has_season_and_region_aware_fields():
+    assert all(item["seasons"] for item in ITEMS)
+    assert all(item["climates"] for item in ITEMS)
+    assert all(item["target_usd"] > 0 and item["target_cad"] > 0 for item in ITEMS)
+    assert all(item["image_url"].startswith("https://") for item in ITEMS)
+    assert all(item["shop_query"] for item in ITEMS)
 
 
-def test_gemini_is_called_and_ranks_known_shows(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'GEMINI_API_KEY', 'test-gemini-key')
-    called = {}
 
-    async def fake_gemini(profile, query, candidates, shows=None):
-        called['query'] = query
-        called['candidate_ids'] = [item['id'] for item in candidates]
-        wanted = 'the-jennifer-hudson-show'
-        return {'show_ids': [wanted], 'explanation': 'Selected from the known daytime show directory.'}
+def test_each_season_excludes_items_not_tagged_for_that_season():
+    for season in ("spring", "summer", "fall", "winter"):
+        ranked = main.rank_items({"country": "CA", "season": season, "budget": "any", "climate": "variable"}, ITEMS, limit=len(ITEMS))
+        assert ranked, f"No catalogue items for {season}"
+        assert all(item["season_match"] for item in ranked)
 
-    monkeypatch.setattr(main, 'gemini_recommendations', fake_gemini)
-    response = authed.post(
-        '/api/recommendations',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        json={'query': 'bold talk show', 'profile': {'favoriteShows': ['the-view'], 'styleTags': ['bold'], 'patterns': []}, 'limit': 3},
-    )
+
+def test_selfie_palette_does_not_claim_guidance_before_analysis():
+    assert main._profile_palette_ids({"colorScheme": "selfie"}, None) == set()
+
+
+def test_recommendations_use_current_season_budget_and_currency(client):
+    csrf = signed_in(client)
+    profile = {
+        "country": "CA", "season": "winter", "climate": "cold", "budget": 220,
+        "styleTags": ["classic", "workwear"], "occasions": ["work"],
+        "colorScheme": "cool", "customColors": "navy, grey", "savedItemIds": [], "notForMeItemIds": [],
+    }
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "limit": 16})
     assert response.status_code == 200
-    payload = response.json()
-    assert called['query'] == 'bold talk show'
-    assert payload['source'] == 'gemini'
-    assert payload['ai_status'] == 'used'
-    assert payload['recommendations'][0]['id'] == 'the-jennifer-hudson-show'
-    assert all(item['id'] in called['candidate_ids'] for item in payload['recommendations'])
+    data = response.json()
+    assert data["season"] == "winter"
+    assert data["currency"] == "CAD"
+    assert data["recommendations"]
+    assert all(x["currency"] == "CAD" for x in data["recommendations"])
+    assert all(x["target_price"] <= 220 for x in data["recommendations"])
+    assert all(x["season_match"] for x in data["recommendations"])
+    assert any(x["id"] == "wool-coat" for x in data["recommendations"])
+    assert data["source"] == "profile-ranker"
 
 
-def test_gemini_failure_falls_back_to_profile_ranker(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'GEMINI_API_KEY', 'test-gemini-key')
 
-    async def failed_gemini(*_args, **_kwargs):
-        return None
+def test_fit_preference_and_detected_skin_palette_affect_ranking():
+    neutral_profile = {
+        "country": "CA", "season": "fall", "climate": "variable", "budget": "any",
+        "styleTags": [], "occasions": [], "colorScheme": "earth", "fitPreference": "relaxed",
+    }
+    with_skin = {**neutral_profile, "skinAnalysis": {"skin_color": "#b8795e"}}
+    regular_rank = main.rank_items(neutral_profile, ITEMS, limit=len(ITEMS))
+    skin_rank = main.rank_items(with_skin, ITEMS, limit=len(ITEMS))
+    assert all(item["fit_match"] for item in regular_rank[:5]) or any(item["fit_match"] for item in regular_rank)
+    regular_scores = {item["id"]: item["match_score"] for item in regular_rank}
+    skin_scores = {item["id"]: item["match_score"] for item in skin_rank}
+    assert any(skin_scores[item_id] > regular_scores[item_id] for item_id in regular_scores)
 
-    monkeypatch.setattr(main, 'gemini_recommendations', failed_gemini)
-    response = authed.post(
-        '/api/recommendations',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        json={'query': 'morning show', 'profile': {'favoriteShows': ['the-view'], 'styleTags': ['workwear'], 'patterns': []}, 'limit': 3},
-    )
+
+def test_recommendations_use_usd_budget_for_us_profile(client):
+    csrf = signed_in(client)
+    profile = {"country": "US", "season": "summer", "climate": "warm", "budget": 50, "styleTags": ["casual"], "occasions": ["weekend"], "colorScheme": "earth"}
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "limit": 16})
     assert response.status_code == 200
-    assert response.json()['source'] == 'profile-ranker'
-    assert response.json()['ai_status'] == 'fallback'
+    data = response.json()
+    assert data["currency"] == "USD"
+    assert data["recommendations"]
+    assert all(item["target_price"] <= 50 for item in data["recommendations"])
 
 
-
-
-def test_gemini_empty_or_unknown_show_ids_trigger_profile_fallback(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'GEMINI_API_KEY', 'test-gemini-key')
-
-    async def unusable_gemini(*_args, **_kwargs):
-        return {'show_ids': [], 'explanation': 'No known shows'}
-
-    monkeypatch.setattr(main, 'gemini_recommendations', unusable_gemini)
-    response = authed.post(
-        '/api/recommendations',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        json={'query': 'bold talk show', 'profile': {'styleTags': ['bold'], 'patterns': []}, 'limit': 3},
-    )
+def test_recommendations_exclude_not_for_me_feedback(client):
+    csrf = signed_in(client)
+    profile = {"country": "CA", "season": "fall", "climate": "variable", "budget": "any", "styleTags": ["casual"], "occasions": ["everyday"], "colorScheme": "earth", "notForMeItemIds": ["plaid-overshirt"]}
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "limit": 16})
     assert response.status_code == 200
-    assert response.json()['source'] == 'profile-ranker'
-    assert response.json()['ai_status'] == 'fallback'
+    assert "plaid-overshirt" not in {item["id"] for item in response.json()["recommendations"]}
 
 
-def test_config_reports_whether_provider_keys_are_present(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'GEMINI_API_KEY', '')
-    monkeypatch.setattr(main, 'YCE_API_KEY', '')
-    payload = authed.get('/api/config').json()
-    assert payload['gemini_configured'] is False
-    assert payload['youcam_configured'] is False
-    assert payload['gemini_model'] == main.GEMINI_MODEL
-
-
-def test_try_on_without_youcam_key_fails_without_faking_success(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'YCE_API_KEY', '')
-    response = authed.post(
-        '/api/try-on',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        files={
-            'photo': ('me.jpg', b'photo', 'image/jpeg'),
-            'outfit_reference': ('outfit.jpg', b'outfit', 'image/jpeg'),
-        },
-        data={'consent': 'true', 'garment_category': 'auto'},
-    )
-    assert response.status_code == 503
-    assert 'not configured' in response.json()['detail'].lower()
-
-
-def test_try_on_sends_the_user_selected_outfit_reference_to_clothes_v4(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'YCE_API_KEY', 'test-youcam-key')
-    uploaded = []
-    called = {}
-
-    async def fake_upload(image_bytes, filename, content_type):
-        uploaded.append((filename, content_type, image_bytes))
-        return 'uploaded-' + filename
-
-    async def fake_create(path, body):
-        called['path'] = path
-        called['body'] = body
-        return {'data': {'task_id': 'yce-task-123'}}
-
-    monkeypatch.setattr(main, 'upload_image_to_yce', fake_upload)
-    monkeypatch.setattr(main, 'create_yce_task', fake_create)
-    response = authed.post(
-        '/api/try-on',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        files={
-            'photo': ('my-photo.jpg', b'my-photo-bytes', 'image/jpeg'),
-            'outfit_reference': ('the-view-outfit.png', b'actual-outfit-bytes', 'image/png'),
-        },
-        data={'consent': 'true', 'garment_category': 'auto'},
-    )
+def test_recommendations_use_search_query_to_rank_existing_items(client):
+    csrf = signed_in(client)
+    profile = {"country": "CA", "season": "spring", "climate": "mild", "budget": "any", "styleTags": [], "occasions": [], "colorScheme": "earth"}
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "query": "linen button down shirt", "limit": 4})
     assert response.status_code == 200
-    assert response.json()['task_id'] == 'yce-task-123'
-    assert response.json()['reference_mode'] == 'user-selected-outfit-image'
-    assert {item[0] for item in uploaded} == {'my-photo.jpg', 'the-view-outfit.png'}
-    assert called['path'] == '/s2s/v2.0/task/cloth-v4'
-    assert called['body']['src_file_id'] == 'uploaded-my-photo.jpg'
-    assert called['body']['ref_file_id'] == 'uploaded-the-view-outfit.png'
-    assert called['body']['garment_category'] == 'auto'
+    ids = [item["id"] for item in response.json()["recommendations"]]
+    assert ids[0] == "linen-shirt"
 
 
-def test_try_on_requires_consent_before_provider_upload(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'YCE_API_KEY', 'test-youcam-key')
-    response = authed.post(
-        '/api/try-on',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        files={
-            'photo': ('me.jpg', b'my-photo', 'image/jpeg'),
-            'outfit_reference': ('outfit.jpg', b'outfit', 'image/jpeg'),
-        },
-        data={'consent': 'false', 'garment_category': 'auto'},
+def test_recommendations_return_disclaimer_about_editorial_images_and_prices(client):
+    csrf = signed_in(client)
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": {"budget": "any", "country": "CA", "season": "auto"}})
+    assert response.status_code == 200
+    note = response.json()["catalogue_note"]
+    assert "not live retailer listings" in note
+    assert "current price" in note
+
+
+def test_skin_colour_guide_uses_detected_color_as_optional_inspiration():
+    warm = main.palette_guide({"skin_color": "#b8795e", "eye_color": "#293f9b"})
+    cool = main.palette_guide({"skin_color": "#9e9cc1"})
+    assert warm and warm["family"] == "warm"
+    assert cool and cool["family"] == "cool"
+    assert "not a definitive" in warm["note"]
+
+
+def test_recommendations_include_skin_palette_guide(client):
+    csrf = signed_in(client)
+    profile = {"country": "CA", "season": "fall", "climate": "variable", "budget": "any", "colorScheme": "selfie", "skinAnalysis": {"skin_color": "#b8795e"}}
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "limit": 5})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["skin_palette_guide"]["family"] == "warm"
+    assert data["recommendations"]
+
+
+def test_api_requires_authentication(client):
+    response = client.get("/api/catalog")
+    assert response.status_code == 401
+
+
+def test_mutating_api_requires_csrf(client):
+    signed_in(client)
+    response = client.post("/api/recommendations", json={"profile": {}})
+    assert response.status_code == 403
+
+
+def test_catalog_and_config_are_available_after_signin(client):
+    csrf = signed_in(client)
+    config = client.get("/api/config", headers={"X-CSRF-Token": csrf})
+    catalog = client.get("/api/catalog", headers={"X-CSRF-Token": csrf})
+    assert config.status_code == 200
+    assert config.json()["supported_countries"] == ["CA", "US"]
+    assert catalog.status_code == 200
+
+
+def test_missing_consent_rejects_skin_analysis_before_provider_call(client, monkeypatch):
+    csrf = signed_in(client)
+    monkeypatch.setattr(main, "YCE_API_KEY", "test-key")
+    response = client.post(
+        "/api/color-analysis",
+        headers={"X-CSRF-Token": csrf},
+        data={"consent": "false"},
+        files={"photo": ("selfie.jpg", b"fake-image", "image/jpeg")},
     )
     assert response.status_code == 400
-    assert 'consent' in response.json()['detail'].lower()
+    assert "Consent is required" in response.json()["detail"]
 
 
-def test_try_on_requires_both_jpg_or_png_images(client):
-    authed = sign_in(client)
-    response = authed.post(
-        '/api/try-on',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        files={
-            'photo': ('me.gif', b'my-photo', 'image/gif'),
-            'outfit_reference': ('outfit.jpg', b'outfit', 'image/jpeg'),
-        },
-        data={'consent': 'true', 'garment_category': 'auto'},
+def test_live_skin_analysis_reports_missing_key_without_upload(client, monkeypatch):
+    csrf = signed_in(client)
+    monkeypatch.setattr(main, "YCE_API_KEY", "")
+    response = client.post(
+        "/api/color-analysis",
+        headers={"X-CSRF-Token": csrf},
+        data={"consent": "true"},
+        files={"photo": ("selfie.jpg", b"fake-image", "image/jpeg")},
+    )
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"].lower()
+
+
+def test_non_image_upload_is_rejected(client):
+    csrf = signed_in(client)
+    response = client.post(
+        "/api/color-analysis",
+        headers={"X-CSRF-Token": csrf},
+        data={"consent": "true"},
+        files={"photo": ("selfie.gif", b"fake-image", "image/gif")},
     )
     assert response.status_code == 415
 
 
-def test_color_analysis_uses_youcam_skin_tone_task(client, monkeypatch):
-    authed = sign_in(client)
-    monkeypatch.setattr(main, 'YCE_API_KEY', 'test-youcam-key')
-    uploads = []
-    called = {}
-
-    async def fake_upload(image_bytes, filename, content_type):
-        uploads.append((filename, content_type))
-        return 'face-file-id'
-
-    async def fake_create(path, body):
-        called['path'] = path
-        called['body'] = body
-        return {'data': {'task_id': 'color-task-123'}}
-
-    monkeypatch.setattr(main, 'upload_image_to_yce', fake_upload)
-    monkeypatch.setattr(main, 'create_yce_task', fake_create)
-    response = authed.post(
-        '/api/color-analysis',
-        headers={'X-CSRF-Token': csrf_for(authed)},
-        files={'photo': ('selfie.jpg', b'selfie-bytes', 'image/jpeg')},
-        data={'consent': 'true'},
-    )
-    assert response.status_code == 200
-    assert uploads == [('selfie.jpg', 'image/jpeg')]
-    assert called['path'] == '/s2s/v2.0/task/skin-tone-analysis'
-    assert called['body']['src_file_id'] == 'face-file-id'
-    assert response.json()['task_id'] == 'color-task-123'
+def test_app_ui_uses_selfie_only_for_skin_analysis(client):
+    signed_in(client)
+    response = client.get("/app")
+    html = response.text
+    assert "Skin and facial colour analysis" in html
+    assert "Your selfie is used for this analysis only" in html
+    assert "try-on" not in html.lower()
+    script = (__import__("pathlib").Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()
+    assert "runSkinAnalysis" in script
+    assert "/api/color-analysis" in script
+    assert "/api/tasks/color/" in script
 
 
-def test_yce_task_paths_and_jpeg_metadata_match_documented_contract():
-    assert main.YCE_TASK_PATHS['try-on'] == '/s2s/v2.0/task/cloth-v4'
-    assert main.YCE_TASK_PATHS['color'] == '/s2s/v2.0/task/skin-tone-analysis'
-    assert main.normalize_yce_content_type('image/jpeg') == 'image/jpg'
-    assert main.normalize_yce_content_type('image/png') == 'image/png'
+def test_app_ui_has_style_quiz_custom_palette_and_saved_feedback(client):
+    signed_in(client)
+    html = client.get("/app").text
+    assert "Take the style quiz" in html
+    assert "Have a colour scheme in mind?" in html
+    assert 'id="quiz-palette-choices"' in html
+    assert 'id="quick-color-scheme"' in html
+    assert '"My own colour scheme"' in (__import__("pathlib").Path(__file__).resolve().parents[1] / "mystyle" / "catalog.py").read_text()
+    script = (__import__("pathlib").Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()
+    assert "Not for me" in script or "data-not-for-me" in script
+    assert "Saved pieces" in html
 
 
-def test_yce_result_url_and_task_status_are_recognized():
-    payload = {'data': {'task_status': 'success', 'results': {'url': 'https://example.test/generated.jpg'}}}
-    assert main.extract_output_url(payload) == 'https://example.test/generated.jpg'
-    assert main.extract_task_status(payload) == 'success'
-    assert main.extract_task_status({'data': {'task_status': 'error'}}) == 'error'
-    assert main.find_color_payload({'data': {'results': {'color': {'skin_color': '#b9947c'}}}}) == {'skin_color': '#b9947c'}
+def test_app_ui_discloses_not_live_product_data(client):
+    signed_in(client)
+    html = client.get("/app").text.lower()
+    assert "not live retailer listings" in html or "illustrative budget targets" in html
+    assert "confirm current prices" in html
 
 
-def test_app_ui_has_no_demo_garment_grid_and_has_real_wardrobe_links():
-    template = Path('styletv/templates/app.html').read_text()
-    script = Path('public/assets/app.js').read_text()
-    assert 'id="wardrobe-recommendation-grid"' in template
-    assert 'id="product-grid"' not in template
-    assert 'id="saved-product-grid"' not in template
-    assert 'View actual outfits' in script
-    assert 'WornOnTV' in template
-    assert 'data-open-try-on' in script
-    assert "apiFetch('/api/recommendations'" in script
-    assert "apiFetch('/api/try-on'" in script
-    assert "apiFetch(`/api/try-on/${encodeURIComponent" not in script
+def test_only_skin_analysis_task_endpoint_remains(client):
+    signed_in(client)
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text()
+    html = client.get("/app").text
+    assert "app.js" in html
+    assert "/api/tasks/color/" in script
+    assert "/api/tasks/try-on/" not in script
 
 
-def test_try_on_dialog_has_two_images_and_explicit_consent():
-    template = Path('styletv/templates/app.html').read_text()
-    assert 'id="try-on-photo"' in template
-    assert 'id="try-on-reference-photo"' in template
-    assert 'I consent to sending both images to YouCam' in template
-    assert 'Generate preview with YouCam Clothes V4' in template
-
-
-def test_recommendations_never_claim_demo_garments_are_worn_on_screen():
-    main_source = Path('styletv/main.py').read_text()
-    template = Path('styletv/templates/app.html').read_text()
-    assert 'Never invent outfits' in main_source
-    assert 'outfit items stay on WornOnTV' in main_source
-    assert 'generic sample garments' in template
-    assert 'recommendation-reason' not in main_source  # reason is attached to response records, not copied source data
-
-
-def test_daytime_show_cards_have_programme_images_and_source_attribution():
-    for show in main.SHOWS:
-        assert show.get('image_url', '').startswith('https://')
-        assert show.get('image_source_url', '').startswith('https://')
-        assert show.get('image_credit')
-        assert show.get('wornontv_url', '').startswith('https://wornontv.net/')
-
-
-def test_profile_budget_copy_does_not_claim_actual_prices_are_filtered():
-    template = Path('styletv/templates/app.html').read_text()
-    assert 'does not filter individual outfits yet' in template
-    assert 'This budget also applies to the recommendations on Discover' not in template
-
-
-def test_budget_is_not_misrepresented_as_an_applied_item_filter():
-    template = Path('styletv/templates/app.html').read_text()
-    readme = Path('README.md').read_text()
-    assert 'Item-level budget filtering is not available in this version' in template
-    assert 'cannot reliably filter individual WornOnTV outfits' in readme
-
-
-def test_try_on_ui_respects_wornontv_material_permissions():
-    template = Path('styletv/templates/app.html').read_text()
-    script = Path('public/assets/app.js').read_text()
-    assert 'have permission to submit to an AI service' in template
-    assert 'do not copy or upload its material unless you have permission' in template
-    assert 'only use a reference image you own or are authorized to submit' in script
+def test_legacy_tv_brand_and_source_have_been_removed_from_runtime_code():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    files = [root / "index.py", root / "mystyle" / "main.py", root / "mystyle" / "templates" / "app.html", root / "public" / "assets" / "app.js"]
+    joined = "\n".join(path.read_text() for path in files)
+    assert "WornOnTV" not in joined
+    assert "styleTV" not in joined

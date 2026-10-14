@@ -1,93 +1,57 @@
 (() => {
   'use strict';
 
-  const DB_NAME = 'styletv-db';
+  const DB_NAME = 'mystyle-db';
   const DB_VERSION = 1;
-  const PROFILE_KEY = 'demo-profile';
+  const PROFILE_KEY = 'my-profile';
   const SETTINGS_KEY = 'display-settings';
   const DEFAULT_PROFILE = {
-    displayName: 'Demo stylist',
-    favoriteShows: ['the-view', 'today'],
-    styleTags: ['tailoring', 'bold', 'layering'],
-    patterns: ['plaid', 'floral'],
-    colorPreferences: ['Black', 'Burgundy', 'Forest green'],
-    budget: 80,
-    boldness: 'medium',
-    notes: '',
-    colorAnalysis: null
+    displayName: 'myStyle Member', country: 'CA', city: 'Toronto', region: 'Ontario',
+    season: 'auto', climate: 'variable', budget: 100, fitPreference: 'balanced',
+    sizeTop: '', sizeBottom: '', sizeShoe: '', notes: '',
+    styleTags: ['classic', 'casual'], occasions: ['everyday', 'work'],
+    colorScheme: 'earth', customColors: '', colorPreferences: [], skinAnalysis: null,
+    savedItemIds: [], notForMeItemIds: []
   };
-  const STYLE_TAGS = [
-    ['alternative', 'Alternative'], ['punk', 'Punk-inspired'], ['retro', 'Retro'],
-    ['streetwear', 'Streetwear'], ['tailoring', 'Tailoring'], ['utility', 'Utility'],
-    ['layering', 'Layering'], ['experimental', 'Experimental'], ['minimal', 'Minimal'],
-    ['workwear', 'Workwear'], ['preppy', 'Preppy'], ['bold', 'Bold statements']
-  ];
-  const PATTERNS = [
-    ['plaid', 'Plaid / checks'], ['graphic print', 'Graphic prints'], ['geometric', 'Geometric'],
-    ['abstract', 'Abstract'], ['stripes', 'Stripes'], ['floral', 'Floral'], ['solid', 'Mostly solid'], ['subtle check', 'Subtle checks']
-  ];
-  const COLORS = [
-    ['Black', 'Black'], ['Burgundy', 'Burgundy'], ['Forest green', 'Forest green'],
-    ['Navy', 'Navy'], ['Cream', 'Cream'], ['Charcoal', 'Charcoal'], ['Rust', 'Rust'], ['Brighter colours', 'Brighter colours']
-  ];
-  const BOLDNESS = [
-    ['subtle', 'Keep it subtle'], ['medium', 'A bit of a statement'], ['bold', 'Bold and experimental']
-  ];
   const BUDGETS = [
-    ['25', 'Up to $25'], ['40', 'Up to $40'], ['50', 'Up to $50'], ['60', 'Up to $60'], ['75', 'Up to $75'], ['80', 'Up to $80'], ['100', 'Up to $100'], ['125', 'Up to $125'], ['150', 'Up to $150'], ['200', 'Up to $200'], ['250', 'Up to $250'], ['300', 'Up to $300'], ['any', 'No fixed budget']
+    ['25', 'Up to 25'], ['40', 'Up to 40'], ['50', 'Up to 50'], ['60', 'Up to 60'],
+    ['75', 'Up to 75'], ['80', 'Up to 80'], ['100', 'Up to 100'], ['125', 'Up to 125'],
+    ['150', 'Up to 150'], ['200', 'Up to 200'], ['250', 'Up to 250'], ['300', 'Up to 300'],
+    ['any', 'No fixed budget']
   ];
-
   const state = {
-    db: null,
-    profile: structuredClone(DEFAULT_PROFILE),
-    settings: { theme: 'light', fontSize: 'medium', walkthroughSeen: false },
-    shows: [],
-    currentView: 'discover',
-    currentShowId: null,
-    recommendationRequestId: 0,
-    config: { gemini_configured: false, youcam_configured: false },
-    filteredShows: null,
-    catalogueMeta: null,
-    showResultLimit: 24,
-    lastShowFilter: '',
-    showListMode: 'all'
+    db: null, profile: structuredClone(DEFAULT_PROFILE), settings: { theme: 'light', fontSize: 'medium' },
+    catalog: { items: [], palettes: [], styles: [], occasions: [] }, config: {},
+    recommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', colorPreviewUrl: null
   };
-
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
   const csrfToken = $('meta[name="csrf-token"]')?.content || '';
+  const COUNTRY = () => state.profile.country === 'US' ? 'US' : 'CA';
+  const CURRENCY = () => COUNTRY() === 'US' ? 'USD' : 'CAD';
 
   function openDatabase() {
     return new Promise((resolve, reject) => {
-      if (!('indexedDB' in window)) {
-        reject(new Error('IndexedDB is not supported by this browser.'));
-        return;
-      }
+      if (!('indexedDB' in window)) return reject(new Error('Local browser storage is not available.'));
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains('profile')) db.createObjectStore('profile', { keyPath: 'key' });
         if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
-        if (!db.objectStoreNames.contains('saved')) db.createObjectStore('saved', { keyPath: 'productId' });
       };
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error('Could not open the local profile database.'));
+      request.onerror = () => reject(request.error || new Error('Could not open your local profile.'));
     });
   }
 
   function dbRequest(storeName, method, value) {
     return new Promise((resolve, reject) => {
-      if (!state.db) return reject(new Error('The local database is not ready.'));
-      const transaction = state.db.transaction(storeName, method === 'getAll' ? 'readonly' : 'readwrite');
-      const store = transaction.objectStore(storeName);
-      let request;
-      if (method === 'get') request = store.get(value);
-      else if (method === 'getAll') request = store.getAll();
-      else if (method === 'put') request = store.put(value);
-      else if (method === 'delete') request = store.delete(value);
-      else return reject(new Error('Unsupported database operation.'));
+      if (!state.db) return reject(new Error('Local profile storage is not ready.'));
+      const tx = state.db.transaction(storeName, method === 'get' ? 'readonly' : 'readwrite');
+      const store = tx.objectStore(storeName);
+      const request = method === 'get' ? store.get(value) : store.put(value);
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error('A local database operation failed.'));
+      request.onerror = () => reject(request.error || new Error('A local profile operation failed.'));
     });
   }
 
@@ -96,18 +60,16 @@
     if (profileRow?.value) state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
     const settingsRow = await dbRequest('settings', 'get', SETTINGS_KEY);
     if (settingsRow?.value) state.settings = { ...state.settings, ...settingsRow.value };
-    // Legacy saved-product rows from earlier prototypes are ignored; show favourites live in the profile.
-    if (migrateFavoriteShows()) await persistProfile();
+    // Keep saved/disliked IDs valid for this version of the curated style catalogue.
+    if (!Array.isArray(state.profile.savedItemIds)) state.profile.savedItemIds = [];
+    if (!Array.isArray(state.profile.notForMeItemIds)) state.profile.notForMeItemIds = [];
     applySettings();
   }
 
   async function persistProfile() {
     await dbRequest('profile', 'put', { key: PROFILE_KEY, value: state.profile, updatedAt: new Date().toISOString() });
   }
-
-  async function saveSettings() {
-    await dbRequest('settings', 'put', { key: SETTINGS_KEY, value: state.settings });
-  }
+  async function saveSettings() { await dbRequest('settings', 'put', { key: SETTINGS_KEY, value: state.settings }); }
 
   function applySettings() {
     document.documentElement.dataset.theme = state.settings.theme || 'light';
@@ -134,7 +96,7 @@
     el.hidden = false;
     el.focus?.();
     window.clearTimeout(showAlert.timeout);
-    showAlert.timeout = window.setTimeout(() => { el.hidden = true; }, 8000);
+    showAlert.timeout = window.setTimeout(() => { el.hidden = true; }, 7500);
   }
 
   async function apiFetch(url, options = {}) {
@@ -151,745 +113,462 @@
     return body;
   }
 
-  function selectedValues(selector) {
-    return $$(selector).filter(input => input.checked).map(input => input.value);
-  }
+  function selectedValues(selector) { return $$(selector).filter(input => input.checked).map(input => input.value); }
 
-  function makeChoiceInputs(container, options, name, selected, multiple = true) {
-    const el = typeof container === 'string' ? $(container) : container;
-    if (!el) return;
-    el.innerHTML = options.map(([value, label]) => {
-      const checked = selected.includes(value) ? ' checked' : '';
+  function makeChoiceInputs(containerSelector, options, name, selected, multiple = true) {
+    const container = $(containerSelector);
+    if (!container) return;
+    const selectedSet = new Set((selected || []).map(String));
+    container.innerHTML = options.map(([value, label]) => {
+      const checked = selectedSet.has(String(value)) ? ' checked' : '';
       const type = multiple ? 'checkbox' : 'radio';
-      const id = `${name}-${value.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+      const id = `${name}-${String(value).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
       return `<label class="choice-chip" for="${escapeHTML(id)}"><input id="${escapeHTML(id)}" name="${escapeHTML(name)}" value="${escapeHTML(value)}" type="${type}"${checked}><span>${escapeHTML(label)}</span></label>`;
     }).join('');
   }
 
+  function currencyLabel() { return COUNTRY() === 'US' ? '$ USD' : '$ CAD'; }
+  function renderBudgetOptions() {
+    const options = BUDGETS.map(([value, label]) => `<option value="${value}">${value === 'any' ? label : `${label} ${CURRENCY()}`}</option>`).join('');
+    ['#profile-budget', '#quiz-budget'].forEach(selector => {
+      const el = $(selector);
+      if (!el) return;
+      const old = selector === '#profile-budget' ? String(state.profile.budget ?? 'any') : el.value;
+      el.innerHTML = options;
+      el.value = BUDGETS.some(([v]) => v === old) ? old : (BUDGETS.some(([v]) => v === String(state.profile.budget)) ? String(state.profile.budget) : 'any');
+    });
+  }
+
+  function renderPaletteSelect() {
+    const paletteChoices = state.catalog.palettes.map(p => [p.id, p.label]);
+    const paletteOptions = state.catalog.palettes.map(p => `<option value="${escapeHTML(p.id)}">${escapeHTML(p.label)}</option>`).join('');
+    const quick = $('#quick-color-scheme');
+    if (quick) { quick.innerHTML = paletteOptions; quick.value = state.profile.colorScheme || 'earth'; }
+    makeChoiceInputs('#profile-palette-choices', paletteChoices, 'profilePalette', [state.profile.colorScheme || 'earth'], false);
+    makeChoiceInputs('#quiz-palette-choices', paletteChoices, 'quizPalette', [state.profile.colorScheme || 'earth'], false);
+  }
+
   function renderProfileChoices() {
-    makeChoiceInputs('#style-tag-choices', STYLE_TAGS, 'styleTags', state.profile.styleTags || []);
-    makeChoiceInputs('#pattern-choices', PATTERNS, 'patterns', state.profile.patterns || []);
-    makeChoiceInputs('#color-choices', COLORS, 'colorPreferences', state.profile.colorPreferences || []);
-    makeChoiceInputs('#quiz-style-choices', STYLE_TAGS, 'quizStyleTags', state.profile.styleTags || []);
-    makeChoiceInputs('#quiz-pattern-choices', PATTERNS, 'quizPatterns', state.profile.patterns || []);
-    makeChoiceInputs('#quiz-color-choices', COLORS, 'quizColors', state.profile.colorPreferences || []);
-    makeChoiceInputs('#quiz-boldness-choices', BOLDNESS, 'quizBoldness', [state.profile.boldness || 'medium'], false);
-    makeChoiceInputs('#quiz-budget-choices', BUDGETS, 'quizBudget', [String(state.profile.budget || '80')], false);
-    $('#display-name').value = state.profile.displayName || 'Demo stylist';
-    const displayName = state.profile.displayName || 'Demo stylist';
+    makeChoiceInputs('#profile-style-choices', state.catalog.styles, 'profileStyle', state.profile.styleTags || []);
+    makeChoiceInputs('#quiz-style-choices', state.catalog.styles, 'quizStyle', state.profile.styleTags || []);
+    makeChoiceInputs('#profile-occasion-choices', state.catalog.occasions, 'profileOccasion', state.profile.occasions || []);
+    makeChoiceInputs('#quiz-occasion-choices', state.catalog.occasions, 'quizOccasion', state.profile.occasions || []);
+    renderPaletteSelect();
+    renderBudgetOptions();
+    const setValue = (selector, value, fallback = '') => { const el = $(selector); if (el) el.value = value ?? fallback; };
+    setValue('#display-name', state.profile.displayName, 'myStyle Member');
+    setValue('#profile-country', state.profile.country, 'CA');
+    setValue('#profile-city', state.profile.city);
+    setValue('#profile-region', state.profile.region);
+    setValue('#profile-season', state.profile.season, 'auto');
+    setValue('#profile-climate', state.profile.climate, 'variable');
+    setValue('#profile-budget', String(state.profile.budget ?? 'any'), 'any');
+    setValue('#profile-fit', state.profile.fitPreference, 'balanced');
+    setValue('#size-top', state.profile.sizeTop);
+    setValue('#size-bottom', state.profile.sizeBottom);
+    setValue('#size-shoe', state.profile.sizeShoe);
+    setValue('#fit-notes', state.profile.notes);
+    setValue('#profile-custom-colors', state.profile.customColors);
+    setValue('#profile-colour-notes', state.profile.colourNotes);
+    setValue('#quick-color-scheme', state.profile.colorScheme || 'earth');
+    setValue('#quick-custom-colors', state.profile.customColors);
+    setValue('#quiz-custom-colors', state.profile.customColors);
+    updateUserIdentity();
+  }
+
+  function updateUserIdentity() {
+    const name = (state.profile.displayName || 'myStyle Member').trim();
     const userName = $('.user-name');
-    const userAvatar = $('.user-avatar');
-    if (userName) userName.textContent = displayName;
-    if (userAvatar) userAvatar.textContent = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('');
-    $('#budget').value = String(state.profile.budget ?? 80);
-    $('#boldness').value = state.profile.boldness || 'medium';
-    $('#fit-notes').value = state.profile.notes || '';
-    renderColorAnalysis(state.profile.colorAnalysis);
+    if (userName) userName.textContent = name;
+    const avatar = $('.user-avatar');
+    if (avatar) avatar.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('');
   }
 
-  function findShow(id) { return state.shows.find(show => show.id === id); }
-
-  function migrateFavoriteShows() {
-    if (!state.shows.length) return false;
-    const validIds = new Set(state.shows.map(show => show.id));
-    const current = Array.isArray(state.profile.favoriteShows) ? state.profile.favoriteShows : [];
-    const migrated = current.filter(id => validIds.has(id));
-    const previousGeneralTvIds = new Set(['wednesday', 'stranger-things', 'euphoria', 'the-bear', 'heartstopper', 'the-last-of-us']);
-    if (!migrated.length && current.some(id => previousGeneralTvIds.has(id))) {
-      migrated.push('the-view', 'today');
-    }
-    const changed = JSON.stringify(current) !== JSON.stringify(migrated);
-    state.profile.favoriteShows = migrated;
-    return changed;
+  function seasonForNow() {
+    const month = new Date().getMonth() + 1;
+    if ([12, 1, 2].includes(month)) return 'winter';
+    if ([3, 4, 5].includes(month)) return 'spring';
+    if ([6, 7, 8].includes(month)) return 'summer';
+    return 'fall';
   }
-
-
-
-  function wardrobeSource(show) {
-    return show?.wornontv_url || 'https://wornontv.net/';
-  }
-
-  function wardrobeSourceLabel(show) {
-    return show?.wornontv_direct ? 'View outfits on WornOnTV ↗' : 'Search WornOnTV ↗';
-  }
-
-  function wardrobeLinkForProduct(product) {
-    const linkedShows = (product.shows || []).map(findShow).filter(Boolean);
-    return linkedShows.find(show => show.wornontv_direct) || linkedShows[0] || null;
-  }
-
-  let walkthroughIndex = 0;
-  function renderWalkthroughStep() {
-    const panels = $$('.walkthrough-panel');
-    panels.forEach((panel, index) => { panel.hidden = index !== walkthroughIndex; });
-    const back = $('#walkthrough-back');
-    const next = $('#walkthrough-next');
-    if (back) back.hidden = walkthroughIndex === 0;
-    if (next) next.textContent = walkthroughIndex === panels.length - 1 ? 'Start exploring' : 'Continue';
-  }
-
-  function openWalkthrough() {
-    const dialog = $('#walkthrough-dialog');
-    if (!dialog) return;
-    walkthroughIndex = 0;
-    renderWalkthroughStep();
-    if (typeof dialog.showModal === 'function') {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      dialog.setAttribute('open', '');
+  function activeSeason() { return state.profile.season && state.profile.season !== 'auto' ? state.profile.season : seasonForNow(); }
+  const SEASON_NAMES = { spring: 'Spring', summer: 'Summer', fall: 'Fall / autumn', winter: 'Winter' };
+  function updateSeasonDetails(meta = {}) {
+    const season = meta.season || activeSeason();
+    const seasonName = meta.season_label || SEASON_NAMES[season] || 'Seasonal';
+    const climateName = meta.climate_label || ({ cold: 'Cold-weather layers', variable: 'Variable-weather layers', mild: 'Mild-climate dressing', warm: 'Warm-weather pieces' }[state.profile.climate] || 'Season-aware');
+    const location = [state.profile.city, state.profile.region, COUNTRY() === 'CA' ? 'Canada' : 'United States'].filter(Boolean).join(', ');
+    const heroLabel = $('#hero-season-label');
+    if (heroLabel) heroLabel.textContent = `${seasonName} edit, considered for you`;
+    const seasonPill = $('#season-weather-pill');
+    if (seasonPill) seasonPill.textContent = `${seasonName} · ${climateName}`;
+    const regionCopy = $('#region-season-copy');
+    if (regionCopy) regionCopy.textContent = location || 'United States and Canada';
+    const sidebarSeason = $('#sidebar-season');
+    if (sidebarSeason) sidebarSeason.textContent = seasonName;
+    const sidebarNote = $('#sidebar-season-note');
+    if (sidebarNote) sidebarNote.textContent = climateName;
+    const palette = state.catalog.palettes.find(p => p.id === state.profile.colorScheme);
+    const paletteLabel = $('#hero-palette-label');
+    if (paletteLabel) paletteLabel.textContent = palette?.label || state.profile.customColors || 'Your palette, your rules';
+    const swatches = $('#hero-palette-swatches');
+    if (swatches) {
+      const custom = (state.profile.customColors || '').split(/[;,/]/).map(s => s.trim().toLowerCase()).filter(Boolean);
+      const family = state.profile.colorScheme === 'cool' ? ['#24354c', '#d2d9e2', '#6f8196', '#eef0ed', '#728a9c']
+        : state.profile.colorScheme === 'jewel' ? ['#183f37', '#243f76', '#7e3048', '#613e78', '#dabf76']
+          : state.profile.colorScheme === 'pastel' ? ['#ead5d5', '#cad9e8', '#ddd5ef', '#d0e0d6', '#f4eee0']
+            : state.profile.colorScheme === 'bright' ? ['#ce384b', '#215db4', '#e4b524', '#df71a7', '#186f66']
+              : state.profile.colorScheme === 'monochrome' ? ['#111318', '#555960', '#aeb1b7', '#e5e4df', '#ffffff']
+                : ['#f0e3cc', '#b96a46', '#66734c', '#9b7d61', '#353a38'];
+      swatches.innerHTML = family.map(hex => `<i style="background:${hex}"></i>`).join('');
+      if (custom.length) paletteLabel.textContent = `Your colours: ${custom.slice(0, 4).join(', ')}`;
     }
   }
 
-  async function closeWalkthrough(markSeen = true) {
-    const dialog = $('#walkthrough-dialog');
-    if (markSeen) {
-      state.settings.walkthroughSeen = true;
-      try { await saveSettings(); } catch (_) { /* the walkthrough can still close without local persistence */ }
-    }
-    if (dialog?.open && typeof dialog.close === 'function') dialog.close();
-    else dialog?.removeAttribute('open');
+  function findItem(id) { return state.catalog.items.find(item => item.id === id); }
+  function money(amount, currency = CURRENCY()) {
+    if (amount === null || amount === undefined) return 'No fixed target';
+    return new Intl.NumberFormat(COUNTRY() === 'US' ? 'en-US' : 'en-CA', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+  }
+  const COLOR_HEX = {
+    black: '#202124', white: '#f8f7f2', cream: '#eee5d4', 'soft white': '#f5f3ec', oatmeal: '#c6b59b', grey: '#898e95', gray: '#898e95', charcoal: '#44474e', navy: '#27384f', 'ink blue': '#263c57', slate: '#7f8996', burgundy: '#743846', berry: '#a53d60', rust: '#b76340', olive: '#69724b', sage: '#9eae99', camel: '#b38b63', taupe: '#9a8a7b', sand: '#d2b995', ecru: '#e7dcc6', 'forest green': '#345745', 'light blue': '#9fb9cc', indigo: '#3e5479', 'washed black': '#343438', 'sky blue': '#91bad3', 'bright red': '#c93643', cobalt: '#255cc5', blush: '#e5bfc3', lavender: '#c5b6db', plum: '#663c63', emerald: '#246b54', teal: '#287f83', brown: '#76533d', chocolate: '#56382f', tan: '#ba9268', pink: '#d992a3', floral: '#c58b8e'
+  };
+  function colorHex(color) { const key = String(color).toLowerCase(); return COLOR_HEX[key] || '#b4b5b0'; }
+
+  function shopUrl(item) {
+    const host = COUNTRY() === 'CA' ? 'https://www.google.ca/search' : 'https://www.google.com/search';
+    const url = new URL(host);
+    url.searchParams.set('tbm', 'shop');
+    url.searchParams.set('q', `${item.shop_query} ${CURRENCY()}`);
+    url.searchParams.set('gl', COUNTRY() === 'CA' ? 'ca' : 'us');
+    url.searchParams.set('hl', 'en');
+    return url.toString();
   }
 
-  function showImageMarkup(show) {
-    const image = show.image_url;
-    const credit = show.image_credit || 'Image source';
-    const sourceUrl = show.image_source_url;
-    const fallback = `<div class="show-card-image-fallback" aria-hidden="true"><span class="show-card-image-kicker">Daytime style</span><span class="show-card-image-name">${escapeHTML(show.name)}</span></div>`;
-    const media = image
-      ? `<div class="show-card-media" data-image-state="loading"><img data-show-card-image src="${escapeHTML(image)}" alt="Promotional image for ${escapeHTML(show.name)}" loading="lazy" decoding="async">${fallback}</div>`
-      : `<div class="show-card-media" data-image-state="error">${fallback}</div>`;
-    const attribution = sourceUrl
-      ? `<div class="show-card-image-credit">Image: <a href="${escapeHTML(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHTML(credit)}</a></div>`
-      : `<div class="show-card-image-credit">${escapeHTML(credit)}</div>`;
-    return `<div class="show-card-visual">${media}${attribution}</div>`;
+  function renderStyleCard(item, savedView = false) {
+    const saved = (state.profile.savedItemIds || []).includes(item.id);
+    const swatches = (item.colors || []).slice(0, 5).map(color => `<span class="style-color-swatch" style="background:${colorHex(color)}" title="${escapeHTML(color)}" aria-label="${escapeHTML(color)}"></span>`).join('');
+    const seasonBadge = item.season_match ? `${SEASON_NAMES[activeSeason()] || 'Seasonal'} pick` : 'Versatile piece';
+    const targetPrice = item.target_price ?? (COUNTRY() === 'US' ? item.target_usd : item.target_cad);
+    const shop = shopUrl(item);
+    const tags = [...(item.style_tags || []).slice(0, 3), item.category].map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
+    return `<article class="style-card" data-item-card="${escapeHTML(item.id)}">
+      <div class="style-card-media" data-image-state="loading"><img data-style-image src="${escapeHTML(item.image_url)}" alt="Editorial inspiration for ${escapeHTML(item.name)}" loading="lazy" decoding="async"><div class="style-image-fallback"><span>myStyle inspiration</span><strong>${escapeHTML(item.name)}</strong></div><span class="style-card-season">${escapeHTML(seasonBadge)}</span><button class="save-style-button" data-save-item="${escapeHTML(item.id)}" type="button" aria-pressed="${String(saved)}" aria-label="${saved ? 'Remove from' : 'Save to'} my saved pieces">${saved ? '♥' : '♡'}</button></div>
+      <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A versatile option for your edit.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div><div class="style-card-actions"><a class="button button-primary" href="${escapeHTML(shop)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a>${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}</div><p class="style-card-disclosure">Inspiration image, not an exact retailer product. Search results, current price, stock and sizing are controlled by the retailer.</p></div>
+    </article>`;
   }
 
-  function bindShowCardImages(root = document) {
-    root.querySelectorAll('img[data-show-card-image]').forEach(image => {
-      if (image.dataset.imageHandlers === 'bound') return;
-      image.dataset.imageHandlers = 'bound';
-      const update = stateName => image.closest('.show-card-media')?.setAttribute('data-image-state', stateName);
-      image.addEventListener('load', () => update('loaded'), { once: true });
-      image.addEventListener('error', () => update('error'), { once: true });
-      if (image.complete) update(image.naturalWidth > 0 ? 'loaded' : 'error');
+  function bindStyleImages(root = document) {
+    $$('img[data-style-image]', root).forEach(img => {
+      if (img.dataset.bound === '1') return;
+      img.dataset.bound = '1';
+      const parent = img.closest('.style-card-media');
+      const setState = stateName => parent?.setAttribute('data-image-state', stateName);
+      img.addEventListener('load', () => setState('loaded'), { once: true });
+      img.addEventListener('error', () => setState('error'), { once: true });
+      if (img.complete) setState(img.naturalWidth ? 'loaded' : 'error');
     });
   }
 
-  function renderFavoriteShows() {
-    const target = $('#favorite-shows');
-    if (!target) return;
-    const favorites = state.profile.favoriteShows || [];
-    const chosen = state.shows.filter(show => favorites.includes(show.id));
-    if (!chosen.length) {
-      target.innerHTML = '<div class="no-results">Choose a daytime show to personalize this row. <button class="text-link" data-go-view="shows">Find daytime shows →</button></div>';
+  function renderRecommendations(items) {
+    const grid = $('#recommendation-grid');
+    if (!grid) return;
+    if (!items.length) {
+      const budget = state.profile.budget === 'any' ? 'your current filters' : `a ${money(Number(state.profile.budget))} per-piece target`;
+      grid.innerHTML = `<div class="no-results mystyle-no-results"><strong>No pieces matched ${escapeHTML(budget)}.</strong><p>Try widening your budget, changing the colour scheme, or removing a “Not for me” response.</p><button class="button button-outline" type="button" data-reset-dislikes="true">Reset hidden feedback</button></div>`;
       return;
     }
-    target.innerHTML = chosen.slice(0, 5).map(show => `
-      <article class="show-card">
-        ${showImageMarkup(show)}
-        <div class="show-card-content">
-          <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
-          <h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>
-          <div class="show-action-row"><button class="show-card-action" data-open-try-on="${escapeHTML(show.id)}">Try on an outfit</button></div>
-          <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">View actual outfits on WornOnTV ↗</a>
-        </div>
-      </article>`).join('');
-    bindShowCardImages(target);
-  }
-
-  function renderShowCard(show, isFavorite, showAction = true) {
-    const visibleTags = show.tags || [];
-    const tags = visibleTags.slice(0, 4).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
-    return `<article class="show-card" data-show-card="${escapeHTML(show.id)}">
-      ${showImageMarkup(show)}
-      <div class="show-card-content">
-        <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
-        <h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>
-        ${tags ? `<p class="show-cue-label">Style cues</p><div class="show-aesthetic-tags">${tags}</div>` : ''}
-        <div class="show-action-row">${showAction ? `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="${isFavorite}">${isFavorite ? 'Added to my shows ✓' : 'Add to my shows +'}</button>` : ''}<button class="show-card-action" data-open-try-on="${escapeHTML(show.id)}">Try on an outfit</button></div>
-        <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">View actual outfits on WornOnTV ↗</a>
-      </div></article>`;
-  }
-
-  function showRecommendationScore(show) {
-    const favoriteShows = state.shows.filter(item => (state.profile.favoriteShows || []).includes(item.id));
-    const profileTags = new Set((state.profile.styleTags || []).map(x => String(x).toLowerCase()));
-    const profilePatterns = new Set((state.profile.patterns || []).map(x => String(x).toLowerCase()));
-    const favoriteCues = new Set(favoriteShows.flatMap(item => item.tags || []).map(x => String(x).toLowerCase()));
-    const tags = new Set((show.tags || []).map(x => String(x).toLowerCase()));
-    return [...profileTags].filter(tag => tags.has(tag)).length * 3
-      + [...profilePatterns].filter(tag => tags.has(tag)).length * 1.5
-      + [...favoriteCues].filter(cue => tags.has(cue)).length * 0.75;
-  }
-
-  function renderShows(filter = '') {
-    const q = filter.trim().toLowerCase();
-    if (q !== state.lastShowFilter) {
-      state.lastShowFilter = q;
-      state.showResultLimit = 24;
-    }
-    const favorites = new Set(state.profile.favoriteShows || []);
-    const visible = [];
-    const allTarget = $('#all-shows-grid');
-    const newTarget = $('#new-shows-grid');
-    const countTarget = $('#show-results-count');
-    const loadMore = $('#load-more-shows');
-    const filterButtons = $$('[data-show-filter]');
-    filterButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.showFilter === state.showListMode)));
-    const matchingShows = state.shows.filter(show => {
-      const searchable = [show.name, show.category, show.description, ...(show.tags || [])]
-        .filter(Boolean).join(' ').toLowerCase();
-      return !q || searchable.includes(q);
-    });
-    const favoriteIds = new Set(state.profile.favoriteShows || []);
-    const matchedFavorites = matchingShows.filter(show => favoriteIds.has(show.id));
-    const matchedRecommendations = matchingShows.filter(show => !favoriteIds.has(show.id)).sort((a, b) => showRecommendationScore(b) - showRecommendationScore(a));
-    visible.length = 0;
-    const modeShows = state.showListMode === 'favorites'
-      ? matchedFavorites
-      : state.showListMode === 'recommended'
-        ? matchedRecommendations
-        : matchingShows;
-    visible.push(...modeShows);
-    const shownFiltered = visible.slice(0, state.showResultLimit);
-    const heading = $('#show-list-heading');
-    if (heading) heading.textContent = state.showListMode === 'favorites'
-      ? 'My favourites'
-      : state.showListMode === 'recommended' ? 'Recommended for me' : 'All daytime shows';
-    if (countTarget) {
-      const modeLabel = state.showListMode === 'favorites' ? 'favourite daytime show' : state.showListMode === 'recommended' ? 'daytime-show recommendation' : 'daytime show';
-      countTarget.textContent = `${visible.length} ${modeLabel}${visible.length === 1 ? '' : 's'}${q ? ` match “${filter.trim()}”` : ''}.`;
-    }
-    if (allTarget) {
-      const emptyMessage = state.showListMode === 'favorites'
-        ? 'You have not added any favourite shows yet. Search for a show and select “Add to my shows”.'
-        : state.showListMode === 'recommended'
-          ? 'No new daytime-show recommendations match this search. Try another style or title.'
-          : 'No daytime shows matched that search. Try a show title, programme type or style.';
-      allTarget.innerHTML = shownFiltered.length
-        ? shownFiltered.map(show => renderShowCard(show, favorites.has(show.id))).join('')
-        : `<div class="no-results">${escapeHTML(emptyMessage)}</div>`;
-    }
-    if (loadMore) {
-      loadMore.hidden = visible.length <= state.showResultLimit;
-      loadMore.textContent = `Load more shows (${Math.max(0, visible.length - state.showResultLimit)} remaining)`;
-    }
-    const newSection = $('#new-shows-section');
-    if (newSection) newSection.hidden = state.showListMode !== 'all';
-    if (newTarget) {
-      const recommendations = state.shows.filter(show => !favorites.has(show.id));
-      recommendations.sort((a, b) => showRecommendationScore(b) - showRecommendationScore(a));
-      newTarget.innerHTML = recommendations.length
-        ? recommendations.slice(0, 4).map(show => renderShowCard(show, false)).join('')
-        : '<div class="no-results">You have added every daytime show. Remove a favourite to see more options.</div>';
-    }
-    bindShowCardImages(allTarget || document);
-    bindShowCardImages(newTarget || document);
-    if ($('#favorite-shows')) renderFavoriteShows();
-  }
-
-  function localShowRecommendations(query = '', focusShow = null) {
-    const q = query.trim().toLocaleLowerCase();
-    const favoriteIds = new Set(state.profile.favoriteShows || []);
-    const profileTags = new Set((state.profile.styleTags || []).map(value => String(value).toLocaleLowerCase()));
-    const patterns = new Set((state.profile.patterns || []).map(value => String(value).toLocaleLowerCase()));
-    const favoriteCues = new Set(state.shows.filter(show => favoriteIds.has(show.id)).flatMap(show => show.tags || []).map(value => String(value).toLocaleLowerCase()));
-    const queryWords = new Set(q.split(/[^a-z0-9]+/).filter(word => word.length > 2 && !['the','and','for','with','show','outfit','outfits','style','styles','looks','look','find','under','below','less','than','budget'].includes(word)));
-    const ranked = state.shows.filter(show => focusShow?.id === show.id || !favoriteIds.has(show.id)).map(show => {
-      const tags = new Set((show.tags || []).map(value => String(value).toLocaleLowerCase()));
-      const searchable = [show.name, show.category, show.description, ...(show.tags || [])].join(' ').toLocaleLowerCase();
-      let score = [...profileTags].filter(tag => tags.has(tag)).length * 4
-        + [...patterns].filter(tag => tags.has(tag)).length * 2.5
-        + [...favoriteCues].filter(tag => tags.has(tag)).length * 1.25
-        + [...queryWords].filter(word => tags.has(word) || searchable.includes(word)).length * 2;
-      if (q && show.name.toLocaleLowerCase() === q) score += 100;
-      else if (q && show.name.toLocaleLowerCase().includes(q)) score += 70;
-      if (focusShow?.id === show.id) score += 1000;
-      return { show, score };
-    }).sort((a, b) => b.score - a.score || a.show.name.localeCompare(b.show.name));
-    return ranked.slice(0, 6).map(({ show }) => ({
-      ...show,
-      wardrobe_url: wardrobeSource(show),
-      recommendation_reason: focusShow?.id === show.id
-        ? 'You selected this programme. Open its wardrobe page to see documented outfits worn on screen.'
-        : 'Selected from your style directions and favourite-show cues. Open WornOnTV for actual outfit records.'
-    }));
-  }
-
-  function renderWardrobeRecommendations(shows = []) {
-    const target = $('#wardrobe-recommendation-grid');
-    if (!target) return;
-    if (!shows.length) {
-      target.innerHTML = '<div class="no-results">No daytime wardrobe sources matched this search. Try a show title or a different style direction.</div>';
-      return;
-    }
-    const favorites = new Set(state.profile.favoriteShows || []);
-    target.innerHTML = shows.map(show => {
-      const tags = (show.tags || []).slice(0, 4).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
-      const wardrobeUrl = show.wardrobe_url || wardrobeSource(show);
-      return `<article class="show-card recommendation-card" data-recommended-show="${escapeHTML(show.id)}">
-        ${showImageMarkup(show)}
-        <div class="show-card-content">
-          <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
-          <h3>${escapeHTML(show.name)}</h3>
-          <p>${escapeHTML(show.recommendation_reason || show.description || 'Explore this programme’s wardrobe.')}</p>
-          ${tags ? `<div class="show-aesthetic-tags">${tags}</div>` : ''}
-          <div class="show-action-row">
-            ${favorites.has(show.id) ? '<span class="show-type-label">In My shows</span>' : `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="false">Add to My shows +</button>`}
-            <button class="show-card-action" data-open-try-on="${escapeHTML(show.id)}">Try on an outfit</button>
-          </div>
-          <a class="button button-primary wardrobe-primary-link" href="${escapeHTML(wardrobeUrl)}" target="_blank" rel="noopener noreferrer">View actual outfits ↗</a>
-          <p class="outfit-source-note">The original outfit records, images, and shopping links open on WornOnTV.</p>
-        </div>
-      </article>`;
-    }).join('');
-    bindShowCardImages(target);
-  }
-
-  async function requestRecommendations(query = '', focusShow = null) {
-    const requestId = ++state.recommendationRequestId;
-    const subtitle = $('#recommendation-subtitle');
-    const status = $('#recommendation-status');
-    const integrationStatus = $('#integration-status');
-    if (focusShow && subtitle) {
-      subtitle.textContent = `Actual outfit listings for ${focusShow.name}, with related daytime wardrobe sources below.`;
-    } else if (subtitle) {
-      subtitle.textContent = query
-        ? `Daytime wardrobe sources matching “${query}” and your profile.`
-        : 'Daytime programmes ranked from your style profile and favourite-show influences.';
-    }
-
-    const localResults = localShowRecommendations(query, focusShow);
-    renderWardrobeRecommendations(localResults);
-    if (status) status.textContent = 'Matching daytime wardrobe sources…';
-
-    const requestBody = {
-      query,
-      profile: state.profile,
-      limit: 6,
-      focus_show_id: focusShow?.id || null,
-      focus_show_name: focusShow?.name || null,
-      focus_show_tags: Array.isArray(focusShow?.tags) ? focusShow.tags : []
-    };
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
-    try {
-      const result = await apiFetch('/api/recommendations', {
-        method: 'POST',
-        body: JSON.stringify(requestBody),
-        signal: controller.signal
-      });
-      if (requestId !== state.recommendationRequestId) return;
-      const recommendations = Array.isArray(result.recommendations) ? result.recommendations : [];
-      renderWardrobeRecommendations(recommendations.length ? recommendations : localResults);
-      if (status) {
-        if (result.source === 'gemini') {
-          status.textContent = `Gemini (${result.model}) ranked these daytime wardrobe sources. ${result.explanation || ''}`.trim();
-        } else if (result.ai_status === 'fallback') {
-          status.textContent = `Gemini did not return a usable ranking; profile-based recommendations are shown instead. ${result.explanation || ''}`.trim();
-        } else {
-          status.textContent = `Profile-based recommendations. ${result.explanation || ''}`.trim();
-        }
-      }
-      if (integrationStatus) {
-        const geminiState = result.ai_status === 'used' ? 'Gemini API was used for this result.'
-          : result.ai_status === 'fallback' ? 'Gemini is configured, but this result used the profile fallback.'
-            : 'Gemini key is not configured; this result uses profile matching.';
-        integrationStatus.textContent = `${geminiState} YouCam is used only when you explicitly run virtual try-on or colour analysis; photos are not sent during recommendations.`;
-      }
-    } catch (error) {
-      if (requestId !== state.recommendationRequestId) return;
-      renderWardrobeRecommendations(localResults);
-      if (status) status.textContent = error.name === 'AbortError'
-        ? 'The recommendation endpoint timed out. Showing local profile matches; actual outfit listings are still available through WornOnTV.'
-        : 'The recommendation endpoint is unavailable. Showing local profile matches; actual outfit listings are still available through WornOnTV.';
-      if (integrationStatus && error.name !== 'AbortError') integrationStatus.textContent = `Recommendation request failed: ${error.message}. YouCam is separate and is only called when you run a photo-based tool.`;
-      if (error.name !== 'AbortError') showAlert(error.message || 'Could not contact recommendations; local show matching is available.', 'error');
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
+    grid.innerHTML = items.map(item => renderStyleCard(item, false)).join('');
+    bindStyleImages(grid);
   }
 
   function renderSaved() {
-    const target = $('#saved-wardrobe-grid');
-    const empty = $('#saved-empty');
-    if (!target || !empty) return;
-    const favoriteIds = new Set(state.profile.favoriteShows || []);
-    const savedShows = state.shows.filter(show => favoriteIds.has(show.id));
-    target.innerHTML = savedShows.length ? savedShows.map(show => renderShowCard(show, true, false)).join('') : '';
-    target.hidden = !savedShows.length;
-    empty.hidden = savedShows.length > 0;
-    bindShowCardImages(target);
-  }
-
-  function switchView(view) {
-    if (!$(`[data-view-panel="${view}"]`)) return;
-    state.currentView = view;
-    $$('.app-view').forEach(panel => {
-      const isActive = panel.dataset.viewPanel === view;
-      panel.classList.toggle('is-active', isActive);
-      panel.hidden = !isActive;
+    const grid = $('#saved-grid');
+    if (!grid) return;
+    const savedIds = state.profile.savedItemIds || [];
+    const items = savedIds.map(findItem).filter(Boolean).map(item => {
+      const fromRec = state.recommendations.find(x => x.id === item.id);
+      if (fromRec) return fromRec;
+      return { ...item, target_price: COUNTRY() === 'US' ? item.target_usd : item.target_cad, currency: CURRENCY(), recommendation_reason: 'Saved to your personal shortlist.', season_match: (item.seasons || []).includes(activeSeason()) };
     });
-    $$('.side-nav-link').forEach(button => {
-      const active = button.dataset.view === view;
-      button.classList.toggle('is-active', active);
-      if (active) button.setAttribute('aria-current', 'page');
-      else button.removeAttribute('aria-current');
-    });
-    if (view === 'shows') renderShows($('#show-search')?.value || '');
-    if (view === 'profile') renderProfileChoices();
-    if (view === 'saved') renderSaved();
-    if (view === 'discover') {
-      renderFavoriteShows();
-    }
-    $('#app-main')?.focus({ preventScroll: true });
-    window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    grid.innerHTML = items.map(item => renderStyleCard(item, true)).join('');
+    bindStyleImages(grid);
+    $('#saved-empty').hidden = items.length > 0;
+    $('#saved-count').textContent = String(items.length);
   }
 
-  function saveProfileFromForm() {
-    const budgetValue = $('#budget').value;
-    state.profile = {
-      ...state.profile,
-      displayName: $('#display-name').value.trim() || 'Demo stylist',
-      budget: budgetValue === 'any' ? 'any' : Number(budgetValue),
-      boldness: $('#boldness').value,
-      notes: $('#fit-notes').value.trim(),
-      styleTags: selectedValues('#style-tag-choices input'),
-      patterns: selectedValues('#pattern-choices input'),
-      colorPreferences: selectedValues('#color-choices input')
-    };
+  function skinPaletteGuide(colors) {
+    if (!colors || !/^#[0-9a-f]{6}$/i.test(colors.skin_color || '')) return null;
+    const r = parseInt(colors.skin_color.slice(1, 3), 16);
+    const b = parseInt(colors.skin_color.slice(5, 7), 16);
+    if (r - b >= 16) return { label: 'Warm-leaning colour ideas', family: 'warm', colors: ['olive', 'rust', 'camel', 'warm cream', 'terracotta', 'teal'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
+    if (b - r >= 10) return { label: 'Cool-leaning colour ideas', family: 'cool', colors: ['navy', 'berry', 'cobalt', 'cool grey', 'plum', 'icy blue'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
+    return { label: 'Balanced colour ideas', family: 'balanced', colors: ['soft white', 'denim blue', 'sage', 'burgundy', 'taupe', 'charcoal'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
   }
 
-  async function saveProfile(e) {
-    e?.preventDefault();
-    saveProfileFromForm();
-    try {
-      await persistProfile();
-      $('#profile-save-status').textContent = 'Saved to this browser.';
-      showAlert('Your style profile has been updated. Recommendations will use your new preferences.', 'good');
-      renderProfileChoices();
-      renderFavoriteShows();
-      renderShows($('#show-search')?.value || '');
-      await requestRecommendations('');
-    } catch (error) {
-      showAlert(`Could not save the profile: ${error.message}`, 'error');
-    }
-  }
-
-  function runQuizSubmit(event) {
-    event.preventDefault();
-    state.profile.styleTags = selectedValues('#quiz-style-choices input');
-    state.profile.patterns = selectedValues('#quiz-pattern-choices input');
-    state.profile.colorPreferences = selectedValues('#quiz-color-choices input');
-    state.profile.boldness = selectedValues('#quiz-boldness-choices input')[0] || 'medium';
-    const budget = selectedValues('#quiz-budget-choices input')[0] || '80';
-    state.profile.budget = budget === 'any' ? 'any' : Number(budget);
-    persistProfile().then(async () => {
-      renderProfileChoices();
-      await requestRecommendations('');
-      showAlert('Your quiz answers are saved. Your recommendations have been updated.', 'good');
-      switchView('discover');
-    }).catch(error => showAlert(`Could not save quiz answers: ${error.message}`, 'error'));
-  }
-
-  function changeFavorite(showId) {
-    const favorites = new Set(state.profile.favoriteShows || []);
-    if (favorites.has(showId)) favorites.delete(showId);
-    else favorites.add(showId);
-    state.profile.favoriteShows = [...favorites];
-    persistProfile().then(async () => {
-      renderFavoriteShows();
-      renderShows($('#show-search')?.value || '');
-      await requestRecommendations('');
-      showAlert(favorites.has(showId) ? 'Added to your shows.' : 'Removed from your shows. Your profile has been updated.', 'good');
-    }).catch(error => showAlert(`Could not update shows: ${error.message}`, 'error'));
-  }
-
-  function openTryOn(showId = null) {
-    const show = findShow(showId);
-    state.currentShowId = show?.id || null;
-    $('#try-on-title').textContent = show ? `Try on an outfit from ${show.name}.` : 'Try on a specific outfit.';
-    $('#try-on-product').innerHTML = show
-      ? `<div><strong>${escapeHTML(show.name)}</strong><p>Open the official wardrobe page to inspect the documented outfit. For try-on, only use a reference image you own or are authorized to submit for AI processing.</p><a href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">Open ${escapeHTML(show.name)} outfits on WornOnTV ↗</a></div>`
-      : '<div><strong>Use an actual outfit image</strong><p>Choose an image from the wardrobe page for the specific look you want to preview.</p></div>';
-    $('#try-on-form').hidden = false;
-    $('#try-on-status').hidden = true;
-    $('#try-on-result').hidden = true;
-    $('#try-on-result').innerHTML = '';
-    $('#try-on-photo').value = '';
-    $('#try-on-reference-photo').value = '';
-    $('#try-on-consent').checked = false;
-    const keyNote = $('#try-on-api-note');
-    if (keyNote) keyNote.textContent = state.config.youcam_configured
-      ? 'YouCam API key is configured. A live Clothes V4 task starts after you submit both images and consent.'
-      : 'YouCam is not configured on this deployment. No image will be uploaded until YCE_API_KEY is set on the server and the app is redeployed.';
-    const dialog = $('#try-on-dialog');
-    if (typeof dialog.showModal === 'function') dialog.showModal();
-    else dialog.setAttribute('open', '');
-  }
-
-  function closeTryOn() {
-    const dialog = $('#try-on-dialog');
-    if (dialog.open && typeof dialog.close === 'function') dialog.close();
-    else dialog.removeAttribute('open');
-  }
-
-  function setTryOnStatus(message, isError = false) {
-    const status = $('#try-on-status');
-    status.hidden = false;
-    status.textContent = message;
-    status.style.color = isError ? 'var(--bad)' : 'var(--ink-soft)';
-  }
-
-  async function pollTask(kind, taskId, maxAttempts = 24) {
-    // Poll at a moderate interval; status requests are idempotent and the user can retry if processing takes longer.
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // YouCam recommends regular task polling; use a 10-second interval to reduce needless requests.
-      await new Promise(resolve => window.setTimeout(resolve, 10000));
-      const url = `/api/tasks/${kind}/${encodeURIComponent(taskId)}`;
-      const result = await apiFetch(url, { method: 'GET' });
-      if (result.status === 'success' || result.status === 'error') return result;
-      setTryOnStatus(kind === 'try-on' ? 'YouCam is generating your preview. This can take a little while…' : 'YouCam is checking your colour tones…');
-    }
-    throw new Error('This is taking longer than expected. Close this window and retry the task in a moment.');
-  }
-
-  async function submitTryOn(event) {
-    event.preventDefault();
-    const photo = $('#try-on-photo').files?.[0];
-    const outfitReference = $('#try-on-reference-photo').files?.[0];
-    if (!photo || !outfitReference) {
-      setTryOnStatus('Choose both your photo and the actual outfit reference image.', true);
-      return;
-    }
-    if (!$('#try-on-consent').checked) {
-      setTryOnStatus('Consent is required before either image is sent to YouCam.', true);
-      return;
-    }
-    if (!state.config.youcam_configured) {
-      setTryOnStatus('Live YouCam is not configured on this deployment. Add YCE_API_KEY to Vercel environment variables and redeploy. Neither image has been uploaded.', true);
-      return;
-    }
-    if (![photo, outfitReference].every(file => ['image/jpeg', 'image/png'].includes(file.type))) {
-      setTryOnStatus('Please use JPG or PNG files for both images.', true);
-      return;
-    }
-    if ([photo, outfitReference].some(file => !file.size || file.size > 9_500_000)) {
-      setTryOnStatus('Both images must be non-empty and smaller than 9.5 MB each.', true);
-      return;
-    }
-    $('#try-on-form').querySelector('button[type="submit"]').disabled = true;
-    setTryOnStatus('Uploading both images to YouCam…');
-    try {
-      const form = new FormData();
-      form.append('photo', photo);
-      form.append('outfit_reference', outfitReference);
-      form.append('garment_category', 'auto');
-      form.append('consent', 'true');
-      const task = await apiFetch('/api/try-on', { method: 'POST', body: form });
-      const result = await pollTask('try-on', task.task_id);
-      if (result.status === 'error') throw new Error(result.message || 'YouCam could not process this outfit. Try images with a clearer view of the clothing.');
-      if (!result.result_url) throw new Error(result.message || 'YouCam completed the task without a recognized result image.');
-      $('#try-on-result').hidden = false;
-      $('#try-on-result').innerHTML = `<img src="${escapeHTML(result.result_url)}" alt="YouCam virtual try-on result using the outfit image you selected"><p>${escapeHTML(result.message || 'Visual preview only. Actual fit and colour may differ.')}</p>`;
-      setTryOnStatus('YouCam Clothes V4 completed your virtual try-on.');
-    } catch (error) {
-      setTryOnStatus(error.message || 'YouCam could not complete the task. Try again.', true);
-    } finally {
-      $('#try-on-form').querySelector('button[type="submit"]').disabled = false;
-    }
-  }
-
-  function renderColorAnalysis(colors) {
-    const target = $('#color-result');
+  function renderSkinAnalysis(colors) {
+    const target = $('#skin-analysis-preview');
     if (!target) return;
-    if (!colors || typeof colors !== 'object' || !Object.keys(colors).length) {
-      target.innerHTML = '<div class="empty-analysis"><span aria-hidden="true">◌</span><strong>Your colour notes will appear here</strong><p>Use these results as inspiration, not rules.</p></div>';
+    if (!colors || !Object.keys(colors).length) {
+      target.innerHTML = '<div class="skin-empty-state"><span class="skin-empty-mark">◌</span><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to your edit.</p></div>';
+      $('#skin-insight-banner').hidden = true;
       return;
     }
     const order = ['skin_color', 'hair_color', 'eye_color', 'eyebrow_color', 'lip_color'];
-    const labels = { skin_color: 'Skin tone', hair_color: 'Hair colour', eye_color: 'Eye colour', eyebrow_color: 'Eyebrow colour', lip_color: 'Lip colour' };
-    const items = order.filter(key => /^#[0-9a-f]{6}$/i.test(colors[key] || '')).map(key => `<div class="detected-color"><span class="detected-color-swatch" style="background:${escapeHTML(colors[key])}"></span><span><strong>${escapeHTML(labels[key])}</strong><small>${escapeHTML(colors[key])}${colors[`${key}_name`] ? ` · ${escapeHTML(colors[`${key}_name`])}` : ''}</small></span></div>`).join('');
-    target.innerHTML = `<div class="color-palette-results"><h3>Your colour notes</h3><p>These are the facial colour cues detected by YouCam. Use them as optional styling inspiration; actual on-screen outfits are listed on each show's WornOnTV page.</p><div class="detected-colors">${items || '<p>Analysis completed, but no recognized hex colour values were returned.</p>'}</div></div>`;
+    const labels = { skin_color: 'Skin colour', hair_color: 'Hair colour', eye_color: 'Eye colour', eyebrow_color: 'Eyebrow colour', lip_color: 'Lip colour' };
+    const detected = order.filter(key => /^#[0-9a-f]{6}$/i.test(colors[key] || '')).map(key => `<div class="analysis-tone"><span style="background:${escapeHTML(colors[key])}"></span><div><strong>${escapeHTML(labels[key])}</strong><small>${escapeHTML(colors[key])}${colors[`${key}_name`] ? ` · ${escapeHTML(colors[`${key}_name`])}` : ''}</small></div></div>`).join('');
+    const guide = skinPaletteGuide(colors);
+    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><span class="eyebrow">Y O U C A M · DETECTED COLOUR TONES</span><h3>Colour notes for your edit</h3><p>These are detected facial colour values. Use them as styling inspiration—not as rules about what suits you.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}</div>`;
+    const banner = $('#skin-insight-banner');
+    if (banner && guide) {
+      banner.hidden = false;
+      $('#skin-insight-title').textContent = guide.label;
+      $('#skin-insight-copy').textContent = `Your edit now considers these optional palette cues: ${guide.colors.slice(0, 5).join(', ')}. You can still choose any colour scheme.`;
+    }
   }
 
-  async function runColorAnalysis() {
-    const photo = $('#color-photo').files?.[0];
+  function setSkinPhotoPreview() {
+    const target = $('#skin-analysis-preview');
+    const file = $('#skin-photo')?.files?.[0];
+    if (!target || !file || !['image/jpeg', 'image/png'].includes(file.type)) return;
+    if (state.colorPreviewUrl) URL.revokeObjectURL(state.colorPreviewUrl);
+    state.colorPreviewUrl = URL.createObjectURL(file);
+    target.innerHTML = `<div class="skin-local-preview"><img src="${state.colorPreviewUrl}" alt="Local preview of the selfie for colour analysis"><div><strong>Selfie selected</strong><p>This preview stays in this page. The image is sent only when you start analysis and consent.</p></div></div>`;
+  }
+
+  async function pollColorTask(taskId, maxAttempts = 48) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => window.setTimeout(resolve, 5000));
+      const result = await apiFetch(`/api/tasks/color/${encodeURIComponent(taskId)}`, { method: 'GET' });
+      if (result.status === 'success' || result.status === 'error') return result;
+      const button = $('#run-skin-analysis');
+      if (button) button.textContent = 'Analyzing colour tones…';
+    }
+    throw new Error('Analysis is taking longer than expected. Please try again in a moment.');
+  }
+
+  async function runSkinAnalysis() {
+    const photo = $('#skin-photo')?.files?.[0];
     if (!photo) { showAlert('Choose a front-facing JPG or PNG selfie first.', 'error'); return; }
-    if (!$('#color-consent').checked) { showAlert('Please consent before sending your selfie to YouCam.', 'error'); return; }
-    if (!state.config.youcam_configured) { showAlert('Live YouCam is not configured. Add YCE_API_KEY in Vercel settings. Your photo has not been uploaded.', 'error'); return; }
-    if (!['image/jpeg', 'image/png'].includes(photo.type)) { showAlert('Please use a JPG or PNG image.', 'error'); return; }
-    if (photo.size > 9_500_000) { showAlert('Choose an image smaller than 9.5 MB.', 'error'); return; }
-    const button = $('#run-color-analysis');
+    if (!$('#skin-consent')?.checked) { showAlert('Consent is required before sending the selfie to YouCam.', 'error'); return; }
+    if (!state.config.youcam_configured) { showAlert('YouCam skin analysis is not configured on this deployment. Add YCE_API_KEY in environment variables. Your selfie has not been uploaded.', 'error'); return; }
+    if (!['image/jpeg', 'image/png'].includes(photo.type)) { showAlert('Use a JPG or PNG selfie.', 'error'); return; }
+    if (!photo.size || photo.size > 9_500_000) { showAlert('Choose a non-empty image smaller than 9.5 MB.', 'error'); return; }
+    const button = $('#run-skin-analysis');
     button.disabled = true;
-    button.textContent = 'Analyzing…';
-    const target = $('#color-result');
-    target.innerHTML = '<div class="empty-analysis"><span aria-hidden="true">◌</span><strong>Analysis in progress</strong><p>Keep this page open while YouCam processes the photo.</p></div>';
+    button.textContent = 'Starting analysis…';
     try {
       const form = new FormData();
       form.append('photo', photo);
       form.append('consent', 'true');
       const task = await apiFetch('/api/color-analysis', { method: 'POST', body: form });
-      const result = await pollTask('color', task.task_id);
-      if (result.status === 'error') throw new Error(result.message || 'Colour analysis could not be completed.');
-      state.profile.colorAnalysis = result.colors || {};
+      button.textContent = 'Analyzing colour tones…';
+      const result = await pollColorTask(task.task_id);
+      if (result.status === 'error') throw new Error(result.message || 'Skin colour analysis could not be completed.');
+      const colors = result.colors || {};
+      const recognizedTone = Object.values(colors).some(value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value));
+      if (!recognizedTone) throw new Error('YouCam completed the task but did not return recognizable colour values. Try a clearer front-facing selfie.');
+      state.profile.skinAnalysis = colors;
       await persistProfile();
-      renderColorAnalysis(state.profile.colorAnalysis);
-      showAlert('Colour analysis completed. Your colour notes are saved in this browser; the photo is not.', 'good');
+      renderSkinAnalysis(state.profile.skinAnalysis);
+      renderPaletteSelect();
+      await requestRecommendations(state.lastQuery);
+      $('#skin-photo').value = '';
+      if (state.colorPreviewUrl) URL.revokeObjectURL(state.colorPreviewUrl);
+      state.colorPreviewUrl = null;
+      showAlert('Colour analysis complete. The detected colour values have been saved and used to refine your edit.', 'good');
     } catch (error) {
-      target.innerHTML = `<div class="empty-analysis"><span aria-hidden="true">!</span><strong>We couldn't complete the analysis</strong><p>${escapeHTML(error.message)}</p></div>`;
+      showAlert(error.message || 'YouCam could not complete colour analysis.', 'error');
     } finally {
       button.disabled = false;
-      button.textContent = 'Analyze my colour tones';
+      button.textContent = 'Analyze my colours';
     }
   }
 
-  function buildQuizFromProfile() {
-    renderProfileChoices();
+  async function requestRecommendations(query = '') {
+    const id = ++state.requestId;
+    state.lastQuery = query;
+    const status = $('#recommendation-status');
+    if (status) status.textContent = 'Curating pieces around your profile…';
+    const grid = $('#recommendation-grid');
+    if (grid && !grid.children.length) grid.innerHTML = '<div class="loading-style-card"><span class="loading-spinner"></span><strong>Building your edit</strong><p>Matching colours, season, budget and lifestyle.</p></div>';
+    try {
+      const result = await apiFetch('/api/recommendations', { method: 'POST', body: JSON.stringify({ profile: state.profile, query, limit: 8 }) });
+      if (id !== state.requestId) return;
+      state.recommendations = result.recommendations || [];
+      updateSeasonDetails(result);
+      const summary = $('#edit-summary');
+      if (summary) summary.textContent = `${result.count} style concepts selected for ${result.season_label.toLowerCase()} · ${result.climate_label.toLowerCase()} · ${result.currency}`;
+      if (status) status.textContent = state.recommendations.length ? `${state.recommendations.length} pieces in your edit` : 'No matches found';
+      const source = $('#recommendation-source');
+      if (source) source.textContent = state.profile.colorScheme === 'selfie' && !state.profile.skinAnalysis
+        ? 'You selected skin-guided colour ideas. Run the optional colour analysis in Style profile to personalize this signal; no selfie has been uploaded.'
+        : result.ai_status === 'used'
+          ? `Gemini ranking used (${result.model}). All results remain from the known style catalogue.`
+          : result.ai_status === 'fallback'
+            ? 'Using the profile-based matcher because Gemini was not available for this request.'
+            : 'Ranked by your style profile, palette, season, climate, budget, fit preference and feedback.';
+      renderRecommendations(state.recommendations);
+      renderSaved();
+      renderSkinAnalysis(state.profile.skinAnalysis);
+    } catch (error) {
+      if (id !== state.requestId) return;
+      if (status) status.textContent = 'Could not update your edit';
+      if (grid) grid.innerHTML = `<div class="no-results"><strong>We couldn't build your edit.</strong><p>${escapeHTML(error.message)}</p><button class="button button-outline" type="button" id="retry-edit">Try again</button></div>`;
+    }
+  }
+
+  function switchView(view) {
+    state.currentView = view;
+    $$('.app-view').forEach(panel => {
+      const active = panel.dataset.viewPanel === view;
+      panel.classList.toggle('is-active', active);
+      panel.hidden = !active;
+    });
+    $$('.side-nav-link[data-view]').forEach(button => button.classList.toggle('is-active', button.dataset.view === view));
+    if (view === 'profile') { renderProfileChoices(); renderSkinAnalysis(state.profile.skinAnalysis); }
+    if (view === 'saved') renderSaved();
+    if (view === 'discover') renderSaved();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function saveProfile(event) {
+    event?.preventDefault?.();
+    try {
+      state.profile.displayName = $('#display-name')?.value.trim() || 'myStyle Member';
+      state.profile.country = $('#profile-country')?.value || 'CA';
+      state.profile.city = $('#profile-city')?.value.trim() || '';
+      state.profile.region = $('#profile-region')?.value.trim() || '';
+      state.profile.season = $('#profile-season')?.value || 'auto';
+      state.profile.climate = $('#profile-climate')?.value || 'variable';
+      const budget = $('#profile-budget')?.value || 'any';
+      state.profile.budget = budget === 'any' ? 'any' : Number(budget);
+      state.profile.fitPreference = $('#profile-fit')?.value || 'balanced';
+      state.profile.sizeTop = $('#size-top')?.value.trim() || '';
+      state.profile.sizeBottom = $('#size-bottom')?.value.trim() || '';
+      state.profile.sizeShoe = $('#size-shoe')?.value.trim() || '';
+      state.profile.notes = $('#fit-notes')?.value.trim() || '';
+      state.profile.styleTags = selectedValues('#profile-style-choices input');
+      state.profile.occasions = selectedValues('#profile-occasion-choices input');
+      state.profile.colorScheme = selectedValues('#profile-palette-choices input')[0] || 'earth';
+      state.profile.customColors = $('#profile-custom-colors')?.value.trim() || '';
+      state.profile.colourNotes = $('#profile-colour-notes')?.value.trim() || '';
+      await persistProfile();
+      updateUserIdentity(); renderProfileChoices(); updateSeasonDetails();
+      const saveStatus = $('#profile-save-status');
+      if (saveStatus) saveStatus.textContent = 'Your profile has been saved.';
+      showAlert('Style profile updated. Your edit is being refreshed.', 'good');
+      await requestRecommendations(state.lastQuery);
+    } catch (error) { showAlert(`Could not save your profile: ${error.message}`, 'error'); }
+  }
+
+  async function submitQuiz(event) {
+    event.preventDefault();
+    state.profile.styleTags = selectedValues('#quiz-style-choices input');
+    state.profile.occasions = selectedValues('#quiz-occasion-choices input');
+    state.profile.colorScheme = selectedValues('#quiz-palette-choices input')[0] || 'earth';
+    state.profile.customColors = $('#quiz-custom-colors')?.value.trim() || '';
+    const budget = $('#quiz-budget')?.value || 'any';
+    state.profile.budget = budget === 'any' ? 'any' : Number(budget);
+    try {
+      await persistProfile();
+      renderProfileChoices();
+      await requestRecommendations('');
+      showAlert('Your style quiz is saved. Your seasonal edit has been updated.', 'good');
+      switchView('discover');
+    } catch (error) { showAlert(`Could not save quiz answers: ${error.message}`, 'error'); }
+  }
+
+  async function applyQuickPalette(event) {
+    event.preventDefault();
+    state.profile.colorScheme = $('#quick-color-scheme')?.value || 'earth';
+    state.profile.customColors = $('#quick-custom-colors')?.value.trim() || '';
+    try {
+      await persistProfile();
+      renderPaletteSelect(); updateSeasonDetails();
+      await requestRecommendations(state.lastQuery);
+      showAlert('Colour scheme applied to your edit.', 'good');
+    } catch (error) { showAlert(`Could not apply the colour scheme: ${error.message}`, 'error'); }
+  }
+
+  async function toggleSaved(itemId) {
+    const saved = new Set(state.profile.savedItemIds || []);
+    const wasSaved = saved.has(itemId);
+    if (wasSaved) saved.delete(itemId); else saved.add(itemId);
+    state.profile.savedItemIds = [...saved];
+    try {
+      await persistProfile();
+      renderRecommendations(state.recommendations); renderSaved();
+      showAlert(wasSaved ? 'Removed from your saved pieces.' : 'Piece saved to your shortlist.', 'good');
+    } catch (error) { showAlert(`Could not update saved pieces: ${error.message}`, 'error'); }
+  }
+
+  async function markNotForMe(itemId) {
+    state.profile.notForMeItemIds = [...new Set([...(state.profile.notForMeItemIds || []), itemId])];
+    state.profile.savedItemIds = (state.profile.savedItemIds || []).filter(id => id !== itemId);
+    try {
+      await persistProfile();
+      showAlert('Got it. This piece will be left out of future edits.', 'good');
+      await requestRecommendations(state.lastQuery);
+    } catch (error) { showAlert(`Could not save your feedback: ${error.message}`, 'error'); }
+  }
+
+  async function resetDislikes() {
+    state.profile.notForMeItemIds = [];
+    await persistProfile();
+    await requestRecommendations(state.lastQuery);
   }
 
   function attachEvents() {
     document.addEventListener('click', async event => {
-      const viewButton = event.target.closest('[data-view], [data-go-view]');
-      if (viewButton) {
-        const view = viewButton.dataset.view || viewButton.dataset.goView;
-        if (view) switchView(view);
-        if (viewButton.dataset.focusNewShows === 'true') {
-          state.showListMode = 'recommended';
-          renderShows($('#show-search')?.value || '');
-          $('#all-shows-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-        return;
-      }
-      const tryOnButton = event.target.closest('[data-open-try-on]');
-      if (tryOnButton) { openTryOn(tryOnButton.dataset.openTryOn || null); return; }
-      const toggleButton = event.target.closest('[data-toggle-show]');
-      if (toggleButton) { await changeFavorite(toggleButton.dataset.toggleShow); return; }
-      if (event.target.closest('.dialog-close')) closeTryOn();
+      const viewButton = event.target.closest('[data-view]');
+      if (viewButton) { switchView(viewButton.dataset.view); return; }
+      const saveButton = event.target.closest('[data-save-item]');
+      if (saveButton) { await toggleSaved(saveButton.dataset.saveItem); return; }
+      const notForMe = event.target.closest('[data-not-for-me]');
+      if (notForMe) { await markNotForMe(notForMe.dataset.notForMe); return; }
+      if (event.target.closest('[data-reset-dislikes]')) { await resetDislikes(); return; }
+      if (event.target.closest('#retry-edit')) { await requestRecommendations(state.lastQuery); }
     });
-
-    $('.theme-toggle')?.addEventListener('click', async () => {
-      state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
-      applySettings();
-      await saveSettings();
-    });
-    $$('[data-font]').forEach(button => button.addEventListener('click', async () => {
-      state.settings.fontSize = button.dataset.font;
-      applySettings();
-      await saveSettings();
-    }));
-
-    $('#style-search-form')?.addEventListener('submit', async event => {
-      event.preventDefault();
-      const query = $('#style-search').value.trim();
-      const normalizedQuery = query.toLocaleLowerCase();
-      const focusShow = state.shows
-        .filter(show => show.name && normalizedQuery.includes(show.name.toLocaleLowerCase()))
-        .sort((a, b) => b.name.length - a.name.length)[0] || null;
-      await requestRecommendations(query, focusShow);
-    });
-    $$('[data-show-filter]').forEach(button => button.addEventListener('click', () => {
-      state.showListMode = button.dataset.showFilter || 'all';
-      state.showResultLimit = 24;
-      renderShows($('#show-search')?.value || '');
-    }));
-    $('#show-search')?.addEventListener('input', event => renderShows(event.target.value));
-    $('#clear-show-search')?.addEventListener('click', () => { $('#show-search').value = ''; renderShows(''); $('#show-search').focus(); });
-    $('#load-more-shows')?.addEventListener('click', () => {
-      state.showResultLimit += 24;
-      // Preserve the current query and render the next page of matching shows.
-      const q = $('#show-search')?.value || '';
-      state.lastShowFilter = q.trim().toLowerCase();
-      renderShows(q);
-    });
+    $('.theme-toggle')?.addEventListener('click', async () => { state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark'; applySettings(); try { await saveSettings(); } catch (_) { /* display setting is still applied */ } });
+    $$('[data-font]').forEach(button => button.addEventListener('click', async () => { state.settings.fontSize = button.dataset.font; applySettings(); try { await saveSettings(); } catch (_) { /* display setting is still applied */ } }));
     $('#profile-form')?.addEventListener('submit', saveProfile);
-    $('#save-profile-top')?.addEventListener('click', saveProfile);
-    $('#quiz-form')?.addEventListener('submit', runQuizSubmit);
-    $('#try-on-form')?.addEventListener('submit', submitTryOn);
-    $('#run-color-analysis')?.addEventListener('click', runColorAnalysis);
-    $('#open-walkthrough')?.addEventListener('click', openWalkthrough);
-    $('#walkthrough-back')?.addEventListener('click', () => { walkthroughIndex = Math.max(0, walkthroughIndex - 1); renderWalkthroughStep(); });
-    $('#walkthrough-next')?.addEventListener('click', async () => {
-      const count = $$('.walkthrough-panel').length;
-      if (walkthroughIndex >= count - 1) await closeWalkthrough(true);
-      else { walkthroughIndex += 1; renderWalkthroughStep(); }
-    });
-    $('#walkthrough-skip')?.addEventListener('click', () => closeWalkthrough(true));
-    $('#close-walkthrough')?.addEventListener('click', () => closeWalkthrough(true));
-    $('#try-on-dialog')?.addEventListener('click', event => { if (event.target === $('#try-on-dialog')) closeTryOn(); });
-    document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('#try-on-dialog')?.open) closeTryOn(); });
-  }
-
-  function renderProviderStatus() {
-    const target = $('#integration-status');
-    if (!target) return;
-    const geminiText = state.config.gemini_configured
-      ? `Gemini key configured (${state.config.gemini_model || 'configured model'}); each search reports whether the Gemini ranker returned a valid result.`
-      : 'Gemini key is not configured; show recommendations use the local profile matcher.';
-    const youcamText = state.config.youcam_configured
-      ? 'YouCam key is configured; Clothes V4 and facial colour-tone analysis run only when you submit a photo task and consent.'
-      : 'YouCam key is not configured; photo-based tools will not upload images or return mock results.';
-    target.textContent = `${geminiText} ${youcamText}`;
+    $('#save-profile-top')?.addEventListener('click', () => saveProfile());
+    $('#quiz-form')?.addEventListener('submit', submitQuiz);
+    $('#quick-palette-form')?.addEventListener('submit', applyQuickPalette);
+    $('#profile-country')?.addEventListener('change', () => { renderBudgetOptions(); });
+    $('#refresh-edit')?.addEventListener('click', () => requestRecommendations(state.lastQuery));
+    $('#style-search-form')?.addEventListener('submit', event => { event.preventDefault(); requestRecommendations($('#style-search')?.value.trim() || ''); });
+    $('#clear-style-search')?.addEventListener('click', () => { $('#style-search').value = ''; requestRecommendations(''); });
+    $('#skin-photo')?.addEventListener('change', setSkinPhotoPreview);
+    $('#run-skin-analysis')?.addEventListener('click', runSkinAnalysis);
   }
 
   async function init() {
-    // Wire interactions immediately and load IndexedDB independently from the show directory.
     attachEvents();
-    const localStatePromise = (async () => {
-      try {
-        state.db = await openDatabase();
-        await loadLocalState();
-        // Apply saved preferences and refresh the current show recommendations after storage resolves.
-        if (state.shows.length) {
-          migrateFavoriteShows();
-          renderProfileChoices();
-          renderFavoriteShows();
-          renderShows($('#show-search')?.value || '');
-          renderSaved();
-          requestRecommendations($('#style-search')?.value.trim() || '');
-        }
-      } catch (error) {
-        showAlert(`${error.message} Local preferences may not persist in this browser.`, 'error');
-      }
-    })();
-
     try {
-      // The daytime-show directory is curated locally and links out to WornOnTV.
-      // Discovery never waits for an external show catalogue.
       const [catalog, config] = await Promise.all([
-        apiFetch('/api/catalog', { method: 'GET' }),
-        apiFetch('/api/config', { method: 'GET' })
+        apiFetch('/api/catalog', { method: 'GET' }), apiFetch('/api/config', { method: 'GET' })
       ]);
-      state.shows = catalog.shows || [];
-      if (migrateFavoriteShows() && state.db) await persistProfile();
-      state.catalogueMeta = catalog.catalogue || null;
+      state.catalog = catalog;
       state.config = config;
-      const findButton = $('#find-looks-button');
-      if (findButton) {
-        findButton.disabled = false;
-        findButton.textContent = 'Find my looks →';
-      }
+      state.db = await openDatabase();
+      await loadLocalState();
       renderProfileChoices();
-      renderFavoriteShows();
-      renderShows($('#show-search')?.value || '');
+      renderSkinAnalysis(state.profile.skinAnalysis);
+      updateSeasonDetails();
       renderSaved();
-      renderProviderStatus();
-      requestRecommendations($('#style-search')?.value.trim() || '');
-      buildQuizFromProfile();
-      if (!state.settings.walkthroughSeen) openWalkthrough();
-    } catch (error) {
-      const findButton = $('#find-looks-button');
-      if (findButton) {
-        findButton.disabled = false;
-        findButton.textContent = 'Find my looks →';
+      await requestRecommendations('');
+      if (!state.config.youcam_configured) {
+        const note = $('#skin-photo-help');
+        if (note) note.innerHTML = '<strong>Colour analysis is not configured on this deployment</strong><p>Add YCE_API_KEY to the server environment to enable live YouCam analysis. Your selfie will not be uploaded unless the app has the key and you provide consent.</p>';
       }
-      renderProviderStatus();
-      showAlert(error.message || 'Could not load styleTV data.', 'error');
+    } catch (error) {
+      showAlert(`${error.message} Refresh the page to retry loading your profile.`, 'error');
+      const status = $('#recommendation-status');
+      if (status) status.textContent = 'The style catalogue could not be loaded.';
     }
-    // Do not await storage before enabling search. Storage can finish after the
-    // first render and refresh preferences once available.
-    void localStatePromise;
   }
 
-  document.addEventListener('DOMContentLoaded', init, { once: true });
+  document.addEventListener('DOMContentLoaded', init);
 })();

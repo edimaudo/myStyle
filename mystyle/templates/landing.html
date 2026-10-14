@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-font-size="medium">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="myStyle creates a personal clothing edit around your style, colour preferences, lifestyle and season.">
+  <title>myStyle — Get dressed like yourself</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/assets/style.css"><link rel="stylesheet" href="/assets/marketing-controls.css"><script defer src="/assets/site-settings.js"></script>
+</head>
+<body class="landing-body mystyle-landing">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="marketing-header mystyle-marketing-header"><a class="brand" href="/" aria-label="myStyle home"><span class="brand-mark mystyle-brand-mark">m<span>y</span></span><span>myStyle</span></a>
+    <nav class="marketing-nav" aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#what-you-get">Your style edit</a>{% if signed_in %}<a class="button button-primary" href="/app">Open myStyle <span aria-hidden="true">→</span></a>{% else %}<a class="button button-primary" href="/signin">Start styling <span aria-hidden="true">→</span></a>{% endif %}</nav>
+  </header>
+  <main id="main">
+    <section class="landing-hero page-wrap mystyle-landing-hero">
+      <div class="hero-copy"><span class="hero-eyebrow"><span class="hero-dot"></span> YOUR STYLE, IN EVERY SEASON</span><h1>Get dressed like <em>yourself.</em></h1><p class="hero-description">A personal styling edit shaped around your taste, colour story, budget and the season where you live. Less random shopping. More pieces that feel right.</p>
+        <div class="hero-actions">{% if signed_in %}<a class="button button-primary button-large" href="/app">Open my personal edit <span aria-hidden="true">→</span></a>{% else %}<a class="button button-primary button-large" href="/signin">Build my style profile <span aria-hidden="true">→</span></a>{% endif %}<a class="button button-outline button-large" href="#how-it-works">See how it works</a></div>
+        <div class="hero-proof"><span><i class="proof-dot"></i> Style quiz or custom colour scheme</span><span><i class="proof-dot"></i> US and Canada seasonal edits</span><span><i class="proof-dot"></i> Optional AI colour analysis</span></div>
+      </div>
+      <div class="hero-art mystyle-landing-art" aria-label="Seasonal fashion inspiration collage"><div class="hero-image hero-image-main"><img src="https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=1000&q=85" alt="Neutral coat styling inspiration" fetchpriority="high"><div class="image-caption"><span>YOUR SEASONAL EDIT</span><strong>Thoughtful layers. Your point of view.</strong></div></div><div class="hero-image hero-image-side"><img src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=900&q=85" alt="Contemporary everyday fashion styling inspiration" loading="lazy"><div class="landing-palette-strip"><i></i><i></i><i></i><i></i><i></i></div></div></div>
+    </section>
+    <section id="how-it-works" class="how-section page-wrap"><div class="section-heading"><span class="eyebrow">A PERSONAL STYLING ROUTINE</span><h2>A better edit starts with knowing you.</h2><p>Share what you like, set practical preferences and discover a tighter edit of clothing ideas. You stay in control of the style.</p></div>
+      <div class="steps-grid mystyle-steps-grid"><article class="step-card"><span class="step-number">01</span><div class="step-icon" aria-hidden="true">◈</div><h3>Set your style direction</h3><p>Take the quiz or start with a colour scheme you already love. Save your size, fit, budget and occasion preferences.</p></article><article class="step-card"><span class="step-number">02</span><div class="step-icon" aria-hidden="true">✳</div><h3>Get a seasonal edit</h3><p>Explore clothing inspiration ranked around your preferences, local climate and spring, summer, fall or winter needs.</p></article><article class="step-card"><span class="step-number">03</span><div class="step-icon" aria-hidden="true">◉</div><h3>Refine with colour cues</h3><p>Optionally use a selfie for YouCam facial colour-tone analysis. The detected tones can inform palette ideas without limiting what you wear.</p></article></div>
+    </section>
+    <section id="what-you-get" class="discover-band mystyle-discover-band"><div class="page-wrap discover-band-inner"><div><span class="eyebrow">THE MY STYLE APPROACH</span><h2>Personal, practical, and never one-size-fits-all.</h2><p class="band-copy">Your edit responds to your feedback. Save the pieces you like, tell myStyle what is not for you, and adjust your profile whenever your style or season changes.</p></div><div class="style-tags" aria-label="Style directions"><span>Quiet tailoring</span><span>Elevated casual</span><span>Streetwear</span><span>Soft and romantic</span><span>Creative colour</span><span>Minimal</span><span>Preppy</span><span>Bohemian</span></div></div></section>
+  </main>
+  <footer class="marketing-footer page-wrap mystyle-marketing-footer"><a class="brand" href="/" aria-label="myStyle home"><span class="brand-mark mystyle-brand-mark">m<span>y</span></span><span>myStyle</span></a><p>A personal styling prototype for the US and Canada.</p><p class="footer-note">Style imagery and budget targets are inspiration, not live retailer inventory or current prices. Shopping links open external searches; availability and fit must be confirmed with the retailer.</p></footer>
+</body>
+</html>
