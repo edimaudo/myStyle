@@ -4,55 +4,16 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from styletv import main, tvmaze
+from styletv import main
 
 
 client = TestClient(main.app)
 
 
-def demo_catalogue_payload():
-    shows = []
-    for source in main.SHOWS:
-        shows.append({
-            **source,
-            "genres": ["Drama"],
-            "rating": 7.5,
-            "tvmaze_url": "https://www.tvmaze.com/",
-            "data_source": "TVmaze",
-        })
-    return {
-        "shows": shows,
-        "catalogue": {
-            "count": len(shows), "limit": 450, "source": "TVmaze",
-            "source_url": "https://www.tvmaze.com/api", "license": "CC BY-SA",
-            "source_status": "live",
-        },
-    }
-
-
 @pytest.fixture
-def stub_catalogue(monkeypatch):
-    async def fake_get_show_catalog(_seed_shows):
-        return demo_catalogue_payload()
-    monkeypatch.setattr(main, "get_show_catalog", fake_get_show_catalog)
-
-
-def tvmaze_record(show_id, name):
-    return {
-        "id": show_id,
-        "name": name,
-        "url": f"https://www.tvmaze.com/shows/{show_id}/test-series",
-        "type": "Scripted",
-        "language": "English",
-        "genres": ["Drama"],
-        "status": "Ended",
-        "premiered": "2020-01-01",
-        "rating": {"average": 7.5},
-        "weight": 80,
-        "network": {"name": "Example Network"},
-        "image": {"medium": f"https://static.tvmaze.com/uploads/images/medium_portrait/{show_id}.jpg", "original": f"https://static.tvmaze.com/uploads/images/original_untouched/{show_id}.jpg"},
-        "summary": f"<p>{name} follows a group of people through a dramatic story with retro clothing and music.</p>",
-    }
+def stub_catalogue():
+    """The curated daytime catalogue is local and needs no network stub."""
+    return None
 
 
 def sign_in(client_instance=client):
@@ -123,7 +84,7 @@ def test_recommendations_are_grounded_in_catalogue(stub_catalogue, monkeypatch):
         headers={'X-CSRF-Token': token},
         json={
             'query': 'punk plaid jacket under 100',
-            'profile': {'favoriteShows': ['wednesday'], 'styleTags': ['punk', 'alternative'], 'patterns': ['plaid'], 'budget': 100},
+            'profile': {'favoriteShows': ['the-view'], 'styleTags': ['tailoring', 'bold'], 'patterns': ['plaid'], 'budget': 100},
             'limit': 4,
         },
     )
@@ -159,8 +120,8 @@ def test_explicit_query_budget_is_a_hard_ceiling():
     assert all(item["price"] <= 100 for item in ranked)
 
 
-def test_explore_looks_query_prioritizes_selected_show():
-    ranked = main.deterministic_rank({"favoriteShows": [], "budget": "any"}, "The Last of Us")
+def test_explore_looks_query_prioritizes_selected_daytime_show():
+    ranked = main.deterministic_rank({"favoriteShows": [], "budget": "any"}, "CBS Mornings")
     assert ranked
     assert ranked[0]["id"] == "black-utility-jacket"
 
@@ -168,37 +129,6 @@ def test_explore_looks_query_prioritizes_selected_show():
 def test_yce_result_url_schema_is_recognized():
     payload = {"data": {"task_status": "success", "results": {"url": "https://example.test/generated.jpg"}}}
     assert main.extract_output_url(payload) == "https://example.test/generated.jpg"
-
-
-def test_tvmaze_catalogue_is_capped_at_450_and_preserves_starter_shows(monkeypatch):
-    tvmaze.clear_show_catalog_cache()
-
-    index_records = []
-    for page in tvmaze.TVMAZE_INDEX_PAGES:
-        start_id = page * 250 + 1
-        index_records.append([tvmaze_record(show_id, f"Indexed Series {show_id}") for show_id in range(start_id, start_id + 250)])
-
-    async def fake_fetch_json(_client, url):
-        if "/shows?page=" in url:
-            requested_page = int(url.rsplit("=", 1)[1])
-            return index_records[tvmaze.TVMAZE_INDEX_PAGES.index(requested_page)]
-        if "/singlesearch/shows?q=" in url:
-            title = url.rsplit("=", 1)[1].replace("%20", " ")
-            seed = next((show for show in main.SHOWS if show["name"].casefold() == title.casefold()), None)
-            if seed:
-                return tvmaze_record(30000 + main.SHOWS.index(seed), seed["name"])
-        return None
-
-    monkeypatch.setattr(tvmaze, "_fetch_json", fake_fetch_json)
-    result = asyncio.run(tvmaze.get_show_catalog(main.SHOWS))
-    assert result["catalogue"]["count"] == 450
-    assert result["catalogue"]["limit"] == 450
-    assert len(result["shows"]) == 450
-    assert len({show["id"] for show in result["shows"]}) == 450
-    assert {show["id"] for show in result["shows"][:6]} == {show["id"] for show in main.SHOWS}
-    assert all(show.get("image") for show in result["shows"] if show.get("data_source") == "TVmaze")
-    assert all(show.get("tvmaze_url") for show in result["shows"])
-    tvmaze.clear_show_catalog_cache()
 
 
 def test_yce_paths_and_jpeg_metadata_match_provider_contract():
@@ -336,21 +266,15 @@ def test_task_status_routes_poll_matching_youcam_v4_and_color_endpoints(monkeypa
     ]
 
 
-def test_non_seed_show_metadata_influences_garment_recommendations():
-    show = {
-        'id': 'tvmaze-99001',
-        'name': 'The Alternative Series',
-        'tags': ['punk', 'alternative'],
-        'genres': ['Drama'],
-        'tags_source': 'inferred',
-    }
+def test_curated_daytime_show_style_cues_influence_garment_recommendations():
+    show = next(item for item in main.SHOWS if item["id"] == "cbs-mornings")
     ranked = main.deterministic_rank(
-        {'favoriteShows': [], 'styleTags': [], 'patterns': [], 'colorPreferences': [], 'budget': 'any'},
-        'The Alternative Series',
+        {"favoriteShows": [], "styleTags": [], "patterns": [], "colorPreferences": [], "budget": "any"},
+        "CBS Mornings",
         shows=[show],
     )
     assert ranked
-    assert ranked[0]['id'] == 'black-utility-jacket'
+    assert ranked[0]["id"] == "black-utility-jacket"
 
 
 def test_try_on_dialog_follows_current_clothes_v4_full_body_guidance():
@@ -360,81 +284,55 @@ def test_try_on_dialog_follows_current_clothes_v4_full_body_guidance():
     assert 'showing the full body, with one person and a simple background' in app_template
 
 
-def test_dynamic_show_focus_tags_rank_relevant_existing_garments():
-    dynamic_show = {
-        "id": "tvmaze-4242",
-        "name": "Example Punk Series",
-        "tags": ["punk", "plaid"],
-        "genres": ["Drama"],
-    }
+def test_daytime_show_focus_tags_rank_relevant_existing_garments():
+    daytime_show = next(item for item in main.SHOWS if item["id"] == "the-view")
     ranked = main.deterministic_rank(
         {"favoriteShows": [], "styleTags": [], "patterns": [], "colorPreferences": [], "budget": "any"},
-        "Example Punk Series",
-        shows=[dynamic_show],
-        focus_show_id="tvmaze-4242",
-        focus_show_tags=dynamic_show["tags"],
+        daytime_show["name"],
+        shows=[daytime_show],
+        focus_show_id=daytime_show["id"],
+        focus_show_tags=daytime_show["tags"],
     )
-    assert ranked[0]["id"] == "plaid-overshirt"
+    assert ranked[0]["id"] == "statement-shirt"
     assert all(item["id"] in {product["id"] for product in main.PRODUCTS} for item in ranked)
 
 
-def test_recommendation_endpoint_accepts_explicit_dynamic_show_context(monkeypatch):
+def test_recommendation_endpoint_accepts_explicit_daytime_show_context(monkeypatch):
     authed = sign_in(TestClient(main.app))
     monkeypatch.setattr(main, "GEMINI_API_KEY", "")
-    dynamic_show = {
-        "id": "tvmaze-4242", "name": "Example Punk Series", "tags": ["punk", "plaid"],
-        "genres": ["Drama"], "description": "A drama about an alternative music scene.",
-        "rating": 7.8, "image": "https://static.tvmaze.com/test-original.jpg",
-        "tvmaze_url": "https://www.tvmaze.com/shows/4242/example-punk-series",
-    }
-    payload = demo_catalogue_payload()
-    payload["shows"].append(dynamic_show)
-
-    async def dynamic_catalogue(_seeds):
-        return payload
-
-    monkeypatch.setattr(main, "get_show_catalog", dynamic_catalogue)
+    show = next(item for item in main.SHOWS if item["id"] == "the-view")
     page = authed.get('/app').text
     token = re.search(r'<meta name="csrf-token" content="([^"]+)"', page).group(1)
     response = authed.post(
         '/api/recommendations',
         headers={'X-CSRF-Token': token},
         json={
-            'query': 'Example Punk Series',
+            'query': show["name"],
             'profile': {'favoriteShows': [], 'styleTags': [], 'patterns': [], 'colorPreferences': [], 'budget': 'any'},
             'limit': 4,
-            'focus_show_id': 'tvmaze-4242',
-            'focus_show_name': 'Example Punk Series',
-            'focus_show_tags': ['punk', 'plaid'],
+            'focus_show_id': show["id"],
+            'focus_show_name': show["name"],
+            'focus_show_tags': show["tags"],
         },
     )
     assert response.status_code == 200
     result = response.json()
-    assert result['products'][0]['id'] == 'plaid-overshirt'
-    assert 'Example Punk Series' in result['explanation']
+    assert result['products'][0]['id'] == 'statement-shirt'
+    assert show["name"] in result['explanation']
 
 
-def test_tvmaze_prefers_original_resolution_posters():
-    original = tvmaze._normalise_record(tvmaze_record(654321, 'Poster Quality Test'))
-    assert original['image'] == 'https://static.tvmaze.com/uploads/images/original_untouched/654321.jpg'
-
-
-def test_find_my_looks_does_not_depend_on_live_tvmaze(monkeypatch):
+def test_find_my_looks_uses_the_local_daytime_catalogue(monkeypatch):
     authed = sign_in(TestClient(main.app))
     page = authed.get('/app').text
     token = re.search(r'<meta name="csrf-token" content="([^"]+)"', page).group(1)
     monkeypatch.setattr(main, 'GEMINI_API_KEY', '')
 
-    async def unexpected_catalogue_call(_seed_shows):
-        raise AssertionError('recommendations must not fetch TVmaze on every search')
-
-    monkeypatch.setattr(main, 'get_show_catalog', unexpected_catalogue_call)
     response = authed.post(
         '/api/recommendations',
         headers={'X-CSRF-Token': token},
         json={
-            'query': 'punk plaid jacket under $100',
-            'profile': {'favoriteShows': ['wednesday'], 'styleTags': ['punk', 'alternative'], 'patterns': ['plaid'], 'colorPreferences': ['Black'], 'budget': 100},
+            'query': 'tailored plaid jacket under $100',
+            'profile': {'favoriteShows': ['the-view'], 'styleTags': ['tailoring', 'bold'], 'patterns': ['plaid'], 'colorPreferences': ['Black'], 'budget': 100},
             'limit': 6,
         },
     )
@@ -462,7 +360,7 @@ def test_find_my_looks_falls_back_when_gemini_times_out(monkeypatch):
         headers={'X-CSRF-Token': token},
         json={
             'query': 'black jacket',
-            'profile': {'favoriteShows': ['wednesday'], 'styleTags': ['alternative'], 'patterns': ['solid'], 'budget': 100},
+            'profile': {'favoriteShows': ['cbs-mornings'], 'styleTags': ['workwear'], 'patterns': ['solid'], 'budget': 100},
             'limit': 6,
         },
     )
@@ -481,27 +379,32 @@ def test_find_my_looks_form_has_submit_handler_and_bounded_fallback():
     assert 'localRank(query, focusShow)' in script
 
 
-def test_catalog_returns_products_without_waiting_for_tvmaze(monkeypatch):
+def test_catalog_returns_curated_daytime_shows_with_direct_wornontv_links():
     authed = sign_in(TestClient(main.app))
-
-    async def unexpected_tvmaze_call(_seed_shows):
-        raise AssertionError('The immediate catalogue must not wait for TVmaze.')
-
-    monkeypatch.setattr(main, 'get_show_catalog', unexpected_tvmaze_call)
     response = authed.get('/api/catalog')
     assert response.status_code == 200
     payload = response.json()
+    assert len(payload['shows']) == 17
+    assert payload['catalogue']['count'] == 17
+    assert payload['catalogue']['source_status'] == 'curated'
+    assert all(show.get('wornontv_direct') for show in payload['shows'])
+    assert {show['category'] for show in payload['shows']} <= {
+        'Daytime soap', 'Daytime talk show', 'Morning show', 'Morning news',
+        'Entertainment news', 'Daytime game show', 'Daytime news',
+    }
+    assert {'The View', 'Today', 'Good Morning America', 'General Hospital'} <= {
+        show['name'] for show in payload['shows']
+    }
+    assert all(show.get('wornontv_url', '').startswith('https://wornontv.net/') for show in payload['shows'])
+    assert not any(show['name'] in {'Wednesday', 'Stranger Things', 'Euphoria', 'The Bear'} for show in payload['shows'])
     assert len(payload['products']) == len(main.PRODUCTS)
-    assert {show['id'] for show in payload['shows']} == {show['id'] for show in main.SHOWS}
+    show_ids = {show['id'] for show in payload['shows']}
+    assert all(set(product['shows']).issubset(show_ids) for product in payload['products'])
 
 
-def test_expanded_show_catalogue_is_separate_endpoint(stub_catalogue):
+def test_general_tv_show_catalogue_endpoint_is_removed():
     authed = sign_in(TestClient(main.app))
-    response = authed.get('/api/shows')
-    assert response.status_code == 200
-    payload = response.json()
-    assert len(payload['shows']) >= len(main.SHOWS)
-    assert payload['catalogue']['limit'] == 450
+    assert authed.get('/api/shows').status_code == 404
 
 
 def test_profile_and_quiz_share_expanded_budget_choices():
@@ -524,9 +427,11 @@ def test_show_browse_has_search_and_favourite_filters_and_no_verbose_status_copy
     assert 'data-show-filter="all"' in app_template
     assert 'data-show-filter="favorites"' in app_template
     assert 'data-show-filter="recommended"' in app_template
-    assert "Search 450 shows with show-specific posters" not in app_template
+    assert 'Find daytime shows to follow.' in app_template
+    assert 'Shop outfits on WornOnTV' not in app_template  # rendered from each curated show card
+    assert 'View outfits on WornOnTV' in app_js
     assert 'Only run an analysis when you\'re ready.' not in app_template
-    assert "loadExpandedShowCatalogue();" in app_js
+    assert "loadExpandedShowCatalogue" not in app_js
     assert "apiFetch('/api/catalog'" in app_js
 
 
@@ -534,10 +439,10 @@ def test_discovery_card_images_are_contained_not_cropped():
     from pathlib import Path
     css = Path('public/assets/style.css').read_text()
     assert '.product-photo img { width: 100%; height: 100%; object-fit: contain;' in css
-    assert '.show-card-image img { width: 100%; height: 100%; object-fit: contain;' in css
+    assert '.show-type-label' in css
 
 
-def test_find_my_looks_is_enabled_after_fast_catalogue_and_renders_local_first():
+def test_find_my_looks_is_enabled_after_local_catalogue_and_renders_local_first():
     from pathlib import Path
     app_template = Path('styletv/templates/app.html').read_text()
     app_js = Path('public/assets/app.js').read_text()
@@ -545,6 +450,6 @@ def test_find_my_looks_is_enabled_after_fast_catalogue_and_renders_local_first()
     assert 'id="find-looks-button"' in app_template
     assert "requestRecommendations($('#style-search')?.value.trim() || '');" in app_js
     assert "const localProducts = localRank(query, focusShow);" in app_js
-    assert 'network/API latency cannot block Find my looks' in app_js
-    assert '@app.get("/api/shows")' in main_source
-    assert 'discovery never waits on TVmaze' in main_source
+    assert 'Discovery never waits for an external show catalogue.' in app_js
+    assert '@app.get("/api/shows")' not in main_source
+    assert 'curated daytime shows and demo products' in main_source

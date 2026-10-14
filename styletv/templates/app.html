@@ -44,8 +44,8 @@
       <div id="app-alert" class="app-alert" role="status" aria-live="polite" hidden></div>
       <section class="app-view is-active" id="view-discover" data-view-panel="discover">
         <div class="welcome-row"><div><h1>Find your kind of style.</h1><p class="page-lede">Start with a show you love, a look you spotted, or a style you want to try.</p></div><div class="welcome-actions"><button class="button button-outline" data-go-view="quiz">Take the style quiz</button><button class="button button-primary" data-go-view="profile">Update my style</button></div></div>
-        <form id="style-search-form" class="search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="style-search">Search shows, styles or describe an outfit</label><input id="style-search" name="query" type="search" placeholder="Try “punk-inspired jacket with plaid under $100”" autocomplete="off"><button id="find-looks-button" class="button button-primary" type="submit" disabled>Loading styles…</button></form>
-        <div class="section-heading-row"><div><h2>Your shows</h2><p>Wardrobe inspiration from the series you follow.</p></div><button class="text-link" data-go-view="shows">Edit shows <span aria-hidden="true">→</span></button></div>
+        <form id="style-search-form" class="search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="style-search">Search shows, styles or describe an outfit</label><input id="style-search" name="query" type="search" placeholder="Try “The View-inspired blazer under $100”" autocomplete="off"><button id="find-looks-button" class="button button-primary" type="submit" disabled>Loading styles…</button></form>
+        <div class="section-heading-row"><div><h2>Your shows</h2><p>Wardrobe inspiration from the daytime shows you follow.</p></div><button class="text-link" data-go-view="shows">Edit shows <span aria-hidden="true">→</span></button></div>
         <div id="favorite-shows" class="show-strip" aria-live="polite"></div>
         <div class="section-heading-row looks-heading"><div><h2>Picked for your style</h2><p id="recommendation-subtitle">A starting point based on your current preferences.</p></div></div>
         <div id="recommendation-status" class="inline-status" aria-live="polite">Loading your style catalogue…</div>
@@ -66,14 +66,14 @@
       </section>
 
       <section class="app-view" id="view-shows" data-view-panel="shows" hidden>
-        <div class="welcome-row"><div><h1>Find shows to follow.</h1><p class="page-lede">Search by show title, genre or style. Add a show to My favourites to keep it on Discover and tailor your look recommendations.</p></div></div>
-        <div class="search-panel show-search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="show-search">Search shows</label><input id="show-search" type="search" placeholder="Search a title, genre or style (e.g. Wednesday, drama, punk)" autocomplete="off"><button class="button button-outline" id="clear-show-search" type="button">Clear search</button></div>
-        <div class="show-filter-tabs" role="group" aria-label="Filter the show catalogue"><button type="button" data-show-filter="all" aria-pressed="true">All shows</button><button type="button" data-show-filter="favorites" aria-pressed="false">My favourites</button><button type="button" data-show-filter="recommended" aria-pressed="false">Recommended for me</button></div>
-        <div class="section-heading-row"><div><h2 id="show-list-heading">All shows</h2><p id="show-results-count" class="show-results-count" aria-live="polite">Loading shows…</p></div></div>
+        <div class="welcome-row"><div><h1>Find daytime shows to follow.</h1><p class="page-lede">Browse daytime soaps, morning shows and talk shows covered by WornOnTV. Add favourites to personalize Discover, or open a show to see its outfit listings.</p></div></div>
+        <div class="search-panel show-search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="show-search">Search shows</label><input id="show-search" type="search" placeholder="Search a show or style (e.g. The View, morning show, tailoring)" autocomplete="off"><button class="button button-outline" id="clear-show-search" type="button">Clear search</button></div>
+        <div class="show-filter-tabs" role="group" aria-label="Filter daytime shows"><button type="button" data-show-filter="all" aria-pressed="true">All daytime shows</button><button type="button" data-show-filter="favorites" aria-pressed="false">My favourites</button><button type="button" data-show-filter="recommended" aria-pressed="false">Recommended for me</button></div>
+        <div class="section-heading-row"><div><h2 id="show-list-heading">All daytime shows</h2><p id="show-results-count" class="show-results-count" aria-live="polite">Loading daytime shows…</p></div></div>
         <div id="all-shows-grid" class="show-grid"></div>
         <div class="show-load-more-wrap"><button id="load-more-shows" class="button button-outline" type="button" hidden>Load more shows</button></div>
-        <p class="source-attribution">Show data and artwork: <a href="https://www.tvmaze.com/api" target="_blank" rel="noopener noreferrer">TVmaze (CC BY-SA)</a>.</p>
-        <section id="new-shows-section" class="new-shows-section"><div class="section-heading-row"><div><h2>Try a new series for the wardrobe</h2><p>Recommended from the aesthetics you like and the shows you haven't picked yet.</p></div></div><div id="new-shows-grid" class="show-grid"></div></section>
+        <p class="source-attribution">Show directory curated for daytime programming. <a href="https://wornontv.net/" target="_blank" rel="noopener noreferrer">Search all shows on WornOnTV ↗</a>. WornOnTV links lead to actual outfit listings; styleTV’s suggested garments are illustrative inspiration, not verified on-screen items.</p>
+        <section id="new-shows-section" class="new-shows-section"><div class="section-heading-row"><div><h2>Explore other daytime shows</h2><p>More shows to explore based on the style cues in your profile.</p></div></div><div id="new-shows-grid" class="show-grid"></div></section>
       </section>
 
       <section class="app-view" id="view-profile" data-view-panel="profile" hidden>
@@ -113,7 +113,7 @@
       <section class="walkthrough-panel" data-walkthrough-panel="0">
         <p class="walkthrough-eyebrow">Explore shows</p>
         <h3>Start with the shows you love.</h3>
-        <p id="walkthrough-description">Search the catalogue and add favourite shows. Show cards use show-specific poster artwork, and WornOnTV links open the original wardrobe listings where available.</p>
+        <p id="walkthrough-description">Browse daytime soaps, morning shows and talk shows; save favourites to personalize Discover; open WornOnTV to see the actual outfit listings. styleTV’s garment matches are inspiration, not verified on-screen items.</p>
       </section>
       <section class="walkthrough-panel" data-walkthrough-panel="1" hidden>
         <p class="walkthrough-eyebrow">Make it personal</p>

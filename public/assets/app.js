@@ -7,9 +7,9 @@
   const SETTINGS_KEY = 'display-settings';
   const DEFAULT_PROFILE = {
     displayName: 'Demo stylist',
-    favoriteShows: ['wednesday', 'stranger-things'],
-    styleTags: ['punk', 'alternative', 'layering'],
-    patterns: ['plaid', 'graphic print'],
+    favoriteShows: ['the-view', 'today'],
+    styleTags: ['tailoring', 'bold', 'layering'],
+    patterns: ['plaid', 'floral'],
     colorPreferences: ['Black', 'Burgundy', 'Forest green'],
     budget: 80,
     boldness: 'medium',
@@ -52,8 +52,7 @@
     catalogueMeta: null,
     showResultLimit: 24,
     lastShowFilter: '',
-    showListMode: 'all',
-    expandedShowsLoading: false
+    showListMode: 'all'
   };
 
   const $ = (selector, scope = document) => scope.querySelector(selector);
@@ -101,6 +100,7 @@
     if (settingsRow?.value) state.settings = { ...state.settings, ...settingsRow.value };
     const savedRows = await dbRequest('saved', 'getAll');
     state.savedIds = new Set((savedRows || []).map(item => item.productId));
+    if (migrateFavoriteShows()) await persistProfile();
     applySettings();
   }
 
@@ -193,21 +193,28 @@
   function findShow(id) { return state.shows.find(show => show.id === id); }
   function findProduct(id) { return state.products.find(product => product.id === id); }
 
-
-
-  function showArtwork(show) {
-    if (show.image) {
-      return `<div class="show-card-image"><img src="${escapeHTML(show.image)}" alt="${escapeHTML(show.name)} show poster" loading="lazy"></div>`;
+  function migrateFavoriteShows() {
+    if (!state.shows.length) return false;
+    const validIds = new Set(state.shows.map(show => show.id));
+    const current = Array.isArray(state.profile.favoriteShows) ? state.profile.favoriteShows : [];
+    const migrated = current.filter(id => validIds.has(id));
+    const previousGeneralTvIds = new Set(['wednesday', 'stranger-things', 'euphoria', 'the-bear', 'heartstopper', 'the-last-of-us']);
+    if (!migrated.length && current.some(id => previousGeneralTvIds.has(id))) {
+      migrated.push('the-view', 'today');
     }
-    return `<div class="show-card-image image-unavailable"><div class="show-artwork-fallback"><strong>${escapeHTML(show.name)}</strong><span>Show artwork unavailable</span></div></div>`;
+    const changed = JSON.stringify(current) !== JSON.stringify(migrated);
+    state.profile.favoriteShows = migrated;
+    return changed;
   }
 
+
+
   function wardrobeSource(show) {
-    return show?.wornontv_url || 'https://wornontv.net/shows/';
+    return show?.wornontv_url || 'https://wornontv.net/';
   }
 
   function wardrobeSourceLabel(show) {
-    return show?.wornontv_direct ? 'View wardrobe on WornOnTV ↗' : 'Browse WornOnTV directory ↗';
+    return show?.wornontv_direct ? 'View outfits on WornOnTV ↗' : 'Search WornOnTV ↗';
   }
 
   function wardrobeLinkForProduct(product) {
@@ -253,52 +260,42 @@
     const favorites = state.profile.favoriteShows || [];
     const chosen = state.shows.filter(show => favorites.includes(show.id));
     if (!chosen.length) {
-      target.innerHTML = '<div class="no-results">Choose a few favourite shows to personalize this row. <button class="text-link" data-go-view="shows">Find shows →</button></div>';
+      target.innerHTML = '<div class="no-results">Choose a daytime show to personalize this row. <button class="text-link" data-go-view="shows">Find daytime shows →</button></div>';
       return;
     }
     target.innerHTML = chosen.slice(0, 5).map(show => `
       <article class="show-card">
-        ${showArtwork(show)}
-        <div class="show-card-content"><h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p><button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore style matches</button><a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a></div>
+        <div class="show-card-content">
+          <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
+          <h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>
+          <div class="show-action-row"><button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore style matches</button></div>
+          <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a>
+        </div>
       </article>`).join('');
-    bindShowArtworkFallbacks(target);
   }
 
   function renderShowCard(show, isFavorite, showAction = true) {
-    const hasInferredCues = show.tags_source === 'inferred';
-    const visibleTags = (show.tags && show.tags.length ? show.tags : (show.genres || []));
-    const tags = visibleTags.slice(0, 3).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
-    const cueLabel = hasInferredCues ? (show.tags && show.tags.length ? 'Inferred style cues' : 'Genres') : 'Style cues';
+    const visibleTags = show.tags || [];
+    const tags = visibleTags.slice(0, 4).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
     return `<article class="show-card" data-show-card="${escapeHTML(show.id)}">
-      ${showArtwork(show)}
-      <div class="show-card-content"><h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>${tags ? `<p class="show-cue-label">${cueLabel}</p><div class="show-aesthetic-tags">${tags}</div>` : ''}
-      <div class="show-action-row">${showAction ? `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="${isFavorite}">${isFavorite ? 'Added to my shows ✓' : 'Add to my shows +'}</button>` : ''}<button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore looks</button></div>
-      <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a></div></article>`;
-  }
-
-  function bindShowArtworkFallbacks(target) {
-    if (!target) return;
-    $$('.show-card-image img', target).forEach(img => img.addEventListener('error', () => {
-      const card = img.closest('.show-card-image');
-      const showName = img.alt.replace(/ show poster$/, '');
-      if (card) {
-        card.classList.add('image-unavailable');
-        card.innerHTML = `<div class="show-artwork-fallback"><strong>${escapeHTML(showName)}</strong><span>Show artwork unavailable</span></div>`;
-      }
-    }, { once: true }));
+      <div class="show-card-content">
+        <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
+        <h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>
+        ${tags ? `<p class="show-cue-label">Style cues</p><div class="show-aesthetic-tags">${tags}</div>` : ''}
+        <div class="show-action-row">${showAction ? `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="${isFavorite}">${isFavorite ? 'Added to my shows ✓' : 'Add to my shows +'}</button>` : ''}<button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Find inspired looks</button></div>
+        <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a>
+      </div></article>`;
   }
 
   function showRecommendationScore(show) {
     const favoriteShows = state.shows.filter(item => (state.profile.favoriteShows || []).includes(item.id));
     const profileTags = new Set((state.profile.styleTags || []).map(x => String(x).toLowerCase()));
     const profilePatterns = new Set((state.profile.patterns || []).map(x => String(x).toLowerCase()));
-    const favoriteGenres = new Set(favoriteShows.flatMap(item => item.genres || []).map(x => String(x).toLowerCase()));
+    const favoriteCues = new Set(favoriteShows.flatMap(item => item.tags || []).map(x => String(x).toLowerCase()));
     const tags = new Set((show.tags || []).map(x => String(x).toLowerCase()));
-    const genres = new Set((show.genres || []).map(x => String(x).toLowerCase()));
     return [...profileTags].filter(tag => tags.has(tag)).length * 3
       + [...profilePatterns].filter(tag => tags.has(tag)).length * 1.5
-      + [...favoriteGenres].filter(genre => genres.has(genre)).length * 1.7
-      + Number(show.rating || 0) * 0.05;
+      + [...favoriteCues].filter(cue => tags.has(cue)).length * 0.75;
   }
 
   function renderShows(filter = '') {
@@ -316,7 +313,7 @@
     const filterButtons = $$('[data-show-filter]');
     filterButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.showFilter === state.showListMode)));
     const matchingShows = state.shows.filter(show => {
-      const searchable = [show.name, show.description, show.style_note, ...(show.tags || []), ...(show.genres || []), show.network, show.language]
+      const searchable = [show.name, show.category, show.description, ...(show.tags || [])]
         .filter(Boolean).join(' ').toLowerCase();
       return !q || searchable.includes(q);
     });
@@ -334,23 +331,20 @@
     const heading = $('#show-list-heading');
     if (heading) heading.textContent = state.showListMode === 'favorites'
       ? 'My favourites'
-      : state.showListMode === 'recommended' ? 'Recommended for me' : 'All shows';
+      : state.showListMode === 'recommended' ? 'Recommended for me' : 'All daytime shows';
     if (countTarget) {
-      const modeLabel = state.showListMode === 'favorites' ? 'favourite show' : state.showListMode === 'recommended' ? 'recommendation' : 'show';
+      const modeLabel = state.showListMode === 'favorites' ? 'favourite daytime show' : state.showListMode === 'recommended' ? 'daytime-show recommendation' : 'daytime show';
       countTarget.textContent = `${visible.length} ${modeLabel}${visible.length === 1 ? '' : 's'}${q ? ` match “${filter.trim()}”` : ''}.`;
     }
     if (allTarget) {
       const emptyMessage = state.showListMode === 'favorites'
         ? 'You have not added any favourite shows yet. Search for a show and select “Add to my shows”.'
-        : state.expandedShowsLoading && state.showListMode === 'all'
-          ? 'Loading more shows. Your search results will update automatically.'
-          : state.showListMode === 'recommended'
-            ? 'No new show recommendations match this search. Try another style or title.'
-            : 'No shows matched that search. Try a show title, genre or style.';
+        : state.showListMode === 'recommended'
+          ? 'No new daytime-show recommendations match this search. Try another style or title.'
+          : 'No daytime shows matched that search. Try a show title, programme type or style.';
       allTarget.innerHTML = shownFiltered.length
         ? shownFiltered.map(show => renderShowCard(show, favorites.has(show.id))).join('')
         : `<div class="no-results">${escapeHTML(emptyMessage)}</div>`;
-      bindShowArtworkFallbacks(allTarget);
     }
     if (loadMore) {
       loadMore.hidden = visible.length <= state.showResultLimit;
@@ -363,8 +357,7 @@
       recommendations.sort((a, b) => showRecommendationScore(b) - showRecommendationScore(a));
       newTarget.innerHTML = recommendations.length
         ? recommendations.slice(0, 4).map(show => renderShowCard(show, false)).join('')
-        : '<div class="no-results">You have selected every show in this catalogue. Remove a favourite or explore a different style.</div>';
-      bindShowArtworkFallbacks(newTarget);
+        : '<div class="no-results">You have added every daytime show. Remove a favourite to see more options.</div>';
     }
     if ($('#favorite-shows')) renderFavoriteShows();
   }
@@ -396,7 +389,7 @@
     return `<article class="product-card" data-product-card="${escapeHTML(product.id)}">
       <div class="product-photo"><img src="${escapeHTML(product.image)}" alt="Style reference for ${escapeHTML(product.name)}" loading="lazy" onerror="this.style.display='none'"><span class="product-tag">${escapeHTML(product.category)}</span><button type="button" class="save-look" data-save-product="${escapeHTML(product.id)}" aria-label="${saved ? 'Remove' : 'Save'} ${escapeHTML(product.name)}" aria-pressed="${saved}">${saved ? '♥' : '♡'}</button></div>
       <div class="product-content"><h3>${escapeHTML(product.name)}</h3><p class="product-description">${escapeHTML(product.reason)}</p>
-      <p class="product-showline">Style cues from ${escapeHTML(showNames.join(' · ') || 'your style profile')}</p>
+      <p class="product-showline">Inspiration for fans of ${escapeHTML(showNames.join(' · ') || 'your style profile')}</p>
       ${wardrobeShow ? `<a class="product-wardrobe-link" href="${escapeHTML(wardrobeSource(wardrobeShow))}" target="_blank" rel="noopener noreferrer">Explore ${escapeHTML(wardrobeShow.name)} wardrobe on WornOnTV ↗</a>` : ''}
       <div class="product-price-row"><span class="product-price">Around $${Number(product.price).toFixed(0)}</span><span class="product-price-note">${escapeHTML(product.price_note || 'sample price')}</span></div>
       <div class="swatch-row" aria-label="Colour ideas to explore">${swatches}</div>
@@ -857,31 +850,6 @@
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('#try-on-dialog')?.open) closeTryOn(); });
   }
 
-  async function loadExpandedShowCatalogue() {
-    if (state.expandedShowsLoading) return;
-    state.expandedShowsLoading = true;
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 12000);
-    try {
-      const expanded = await apiFetch('/api/shows', { method: 'GET', signal: controller.signal });
-      if (Array.isArray(expanded.shows) && expanded.shows.length) {
-        // Keep profile-stable seed IDs where possible; the API normalizes starter shows
-        // to those same IDs and supplies expanded metadata for all other shows.
-        state.shows = expanded.shows;
-        state.catalogueMeta = expanded.catalogue || state.catalogueMeta;
-        renderFavoriteShows();
-        renderShows($('#show-search')?.value || '');
-      }
-    } catch (error) {
-      // The six starter shows remain usable; do not impair the garment search UI.
-      const status = $('#show-results-count');
-      if (status && !state.shows.length) status.textContent = 'Show catalogue is temporarily unavailable. You can still search the starter shows.';
-    } finally {
-      window.clearTimeout(timeoutId);
-      state.expandedShowsLoading = false;
-    }
-  }
-
   async function init() {
     // Wire interactions immediately and load IndexedDB independently from the
     // product catalogue. A browser storage stall must never disable garment search.
@@ -893,6 +861,7 @@
         // If the catalogue has already loaded, apply stored preferences and refresh
         // the current result set after IndexedDB resolves.
         if (state.products.length) {
+          migrateFavoriteShows();
           renderProfileChoices();
           renderFavoriteShows();
           renderShows($('#show-search')?.value || '');
@@ -904,14 +873,15 @@
     })();
 
     try {
-      // /api/catalog is intentionally local and fast. Expanded TVmaze discovery is
-      // requested later so network/API latency cannot block Find my looks.
+      // The daytime-show directory is curated locally and links out to WornOnTV.
+      // Discovery never waits for an external show catalogue.
       const [catalog, config] = await Promise.all([
         apiFetch('/api/catalog', { method: 'GET' }),
         apiFetch('/api/config', { method: 'GET' })
       ]);
       state.shows = catalog.shows || [];
       state.products = catalog.products || [];
+      if (migrateFavoriteShows() && state.db) await persistProfile();
       state.catalogueMeta = catalog.catalogue || null;
       state.config = config;
       const findButton = $('#find-looks-button');
@@ -926,7 +896,6 @@
       requestRecommendations($('#style-search')?.value.trim() || '');
       buildQuizFromProfile();
       if (!state.settings.walkthroughSeen) openWalkthrough();
-      loadExpandedShowCatalogue();
     } catch (error) {
       const findButton = $('#find-looks-button');
       if (findButton) {

@@ -1,22 +1,22 @@
 # styleTV manual user scenarios
 
-These are repeatable user-acceptance scenarios for the current demo catalogue. The catalogue is deliberately small; sample prices and shopping search links are not verified product listings.
+These are repeatable user-acceptance scenarios for the current demo catalogue. The local show directory is deliberately limited to daytime soaps, morning shows, talk shows and entertainment programmes represented on WornOnTV. Demo prices and shopping search links are not verified product listings.
 
 ## TS-01 — New user asks for help finding a look
 
-**Enter:** “I'm new to dressing like people on TV. I like punk rock, black clothing and experimental patterns, but I don't want to look like I'm wearing a costume. Show me three looks I could actually wear, ideally under $100 each.”
+**Enter:** “I like the polished blazers and statement colours I see on The View. Suggest three wearable looks for under $100 each.”
 
 **Expected:** Product matches come from the current catalogue, each with a style explanation, sample price, show-style cues, colour search options and retailer search link. Explicit budget wording acts as a ceiling. The app doesn't invent products or exact prices.
 
 ## TS-02 — Complete the style quiz
 
-**Action:** Select alternative/punk styling, plaid and graphic prints, mostly dark colours, medium boldness and an $80 budget. Submit the quiz.
+**Action:** Select tailoring, bold colour or florals, medium boldness and an $80 budget. Submit the quiz.
 
 **Expected:** Answers persist in IndexedDB, recommendations refresh and the style profile shows the same choices. The user can retake the quiz.
 
 ## TS-03 — Search and favourite a show
 
-**Enter:** Search “Wednesday”, add it to My shows, then remove it again.
+**Enter:** Search “The View”, add it to My shows, then remove it again.
 
 **Expected:** Search filters the catalogue, the favourite state updates immediately after persistence, and recommendations refresh when shows are added or removed.
 
@@ -24,23 +24,23 @@ These are repeatable user-acceptance scenarios for the current demo catalogue. T
 
 **Action:** Open Explore looks on a show card that is not currently a favourite.
 
-**Expected:** Show-linked garments receive priority. The app doesn't require the user to add the show as a favourite first.
+**Expected:** The selected daytime show and its curated style cues receive priority in the illustrative product list. The app doesn't require the user to add the show as a favourite first.
 
 ## TS-05 — Discover shows by aesthetic
 
-**Enter:** “I like alternative fashion, plaid and graphic prints. Recommend shows with similar wardrobe aesthetics that I haven't selected.”
+**Enter:** “I like tailoring, florals and bold colour. Recommend daytime shows with similar style cues that I haven't selected.”
 
-**Expected:** The new-series area prioritizes Gemini-provided show IDs when Gemini is configured; otherwise, it uses the catalogue's style tags. Existing favourites are excluded from the discovery list.
+**Expected:** The daytime-show area prioritizes Gemini-provided show IDs when Gemini is configured; otherwise, it uses curated style tags. Existing favourites are excluded from the discovery list.
 
 ## TS-06 — Change style preferences over time
 
-**Enter:** “I'm bored of black and plaid. Keep Wednesday as a favourite, but add brighter colours and geometric patterns. My budget is still $100.”
+**Enter:** “Keep The View as a favourite, but add brighter colours and geometric patterns. My budget is still $100.”
 
 **Expected:** Updating the profile changes matching behaviour, keeps the favourite show, preserves saved looks and applies the revised budget. Revisions don't require a new account.
 
 ## TS-07 — Explicit budget is respected
 
-**Enter:** “Find me a punk-inspired jacket with a pattern for under $100.”
+**Enter:** “Find me a bold tailored look for under $100.”
 
 **Expected:** Returned sample products are priced at $100 or less. A query budget overrides the saved profile budget for that request; it does not change the saved budget unless the user edits the profile.
 
@@ -90,8 +90,8 @@ These are repeatable user-acceptance scenarios for the current demo catalogue. T
 
 **Expected:** Controls remain visible and operable; medium is the default; contrast stays adequate; users can close the dialog with its close button or Escape; reduced-motion preference is respected; and content doesn't require horizontal page scrolling at mobile widths.
 
-## TS-15 — Gemini fallback and catalogue grounding
+## TS-15 — Gemini fallback and daytime catalogue grounding
 
 **Action:** Search in natural language with Gemini configured, then repeat with `GEMINI_API_KEY` unset or invalid.
 
-**Expected:** When configured and successful, Gemini may rank only IDs present in the server's catalogue; retailer links and prices remain sourced from catalogue data. When unavailable, deterministic matching continues to work and reports that the fallback is in use.
+**Expected:** When configured and successful, Gemini may rank only IDs present in the server's catalogue; retailer links and sample prices remain sourced from demo catalogue data. Show cards link to WornOnTV for actual outfit listings; styleTV does not reproduce those listings. When unavailable, deterministic matching continues to work and reports that the fallback is in use.

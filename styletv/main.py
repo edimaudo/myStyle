@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from .catalog import PRODUCTS, SHOWS, get_product
-from .tvmaze import get_show_catalog
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_DIR = ROOT / "public"
@@ -278,28 +277,18 @@ async def config(request: Request):
 
 @app.get("/api/catalog")
 async def api_catalog(request: Request):
-    """Return local product fixtures immediately so discovery never waits on TVmaze."""
+    """Return curated daytime shows and demo products without external catalogue calls."""
     require_session(request)
     return {
         "shows": SHOWS,
         "products": PRODUCTS,
         "catalogue": {
             "count": len(SHOWS),
-            "limit": 450,
-            "source": "styleTV starter catalogue",
-            "source_status": "starter",
+            "limit": len(SHOWS),
+            "source": "Curated daytime shows with outbound WornOnTV links",
+            "source_url": "https://wornontv.net/",
+            "source_status": "curated",
         },
-    }
-
-
-@app.get("/api/shows")
-async def api_shows(request: Request):
-    """Load the expanded open TVmaze show catalogue separately from garment discovery."""
-    require_session(request)
-    catalogue = await get_show_catalog(SHOWS)
-    return {
-        "shows": catalogue["shows"],
-        "catalogue": catalogue["catalogue"],
     }
 
 
@@ -307,8 +296,7 @@ class RecommendationRequest(BaseModel):
     query: str = Field(default="", max_length=1200)
     profile: dict[str, Any] = Field(default_factory=dict)
     limit: int = Field(default=6, ge=1, le=12)
-    # Explicit show context makes the Explore actions deterministic even if a
-    # serverless instance cannot refresh TVmaze at the same moment.
+    # Explicit show context keeps the Explore actions deterministic.
     focus_show_id: str | None = Field(default=None, max_length=100)
     focus_show_name: str | None = Field(default=None, max_length=240)
     focus_show_tags: list[str] = Field(default_factory=list, max_length=12)
@@ -357,9 +345,8 @@ def deterministic_rank(
         item_colors = {x.lower() for x in item.get("colors", [])}
         item_shows = set(item.get("shows", []))
         score += 3 * len(selected_tags & item_tags)
-        # Show tags come from curated starter cues or transparent metadata-based
-        # inferences. They influence garment recommendations without claiming
-        # that TVmaze contains episode-specific costume records.
+        # Curated editorial style cues influence demo-garment recommendations;
+        # they do not claim to identify exact items worn on screen.
         score += 2 * len(selected_show_tags & item_tags)
         score += 1 * len(selected_show_tags & item_patterns)
         score += 2 * len(selected_patterns & item_patterns)
@@ -375,22 +362,20 @@ def deterministic_rank(
 
 
 def rank_show_recommendations(profile: dict[str, Any], shows: list[dict[str, Any]], limit: int = 30) -> list[dict[str, Any]]:
-    """Rank new shows using user aesthetic tags plus metadata genres from TVmaze."""
+    """Rank daytime programmes using curated style cues rather than TV metadata."""
     favorites = set(profile.get("favoriteShows") or [])
     by_id = {show.get("id"): show for show in shows}
-    favorite_genres: set[str] = set()
+    favorite_cues: set[str] = set()
     for show_id in favorites:
-        favorite_genres.update(str(g).casefold() for g in (by_id.get(show_id, {}).get("genres") or []))
+        favorite_cues.update(str(tag).casefold() for tag in (by_id.get(show_id, {}).get("tags") or []))
     profile_tags = {str(tag).casefold() for tag in (profile.get("styleTags") or [])}
     profile_patterns = {str(tag).casefold() for tag in (profile.get("patterns") or [])}
 
-    def score(show: dict[str, Any]) -> tuple[float, float]:
+    def score(show: dict[str, Any]) -> tuple[float, str]:
         tags = {str(tag).casefold() for tag in (show.get("tags") or [])}
-        genres = {str(genre).casefold() for genre in (show.get("genres") or [])}
-        value = 3.0 * len(tags & profile_tags) + len(tags & profile_patterns)
-        value += 1.6 * len(genres & favorite_genres)
-        rating = show.get("rating")
-        return value, float(rating or 0)
+        value = 3.0 * len(tags & profile_tags) + 1.5 * len(tags & profile_patterns)
+        value += 0.75 * len(tags & favorite_cues)
+        return value, str(show.get("name", "")).casefold()
 
     candidates = [show for show in shows if show.get("id") not in favorites]
     candidates.sort(key=score, reverse=True)
@@ -416,11 +401,12 @@ async def gemini_recommendations(
             for item in show_shortlist
         ]
         prompt = (
-            "You power styleTV, a TV-inspired fashion discovery app. Interpret the request and rank only existing catalogue items. "
+            "You power styleTV, a daytime-TV fashion discovery app. Interpret the request and rank only existing catalogue items. "
             "Never invent shows, garments, prices, retailers, or availability. Return valid JSON only with keys: product_ids (array of known product ids), "
-            "show_ids (array of known show ids selected only from the supplied show shortlist), explanation (one short sentence), "
-            "interpreted_preferences (object with tags and patterns arrays). Show genre/synopsis similarity is a discovery hint, not proof of wardrobe similarity. "
-            "Do not infer or recommend clothing based on race or skin type. Facial colour-tone results are optional styling inspiration only.\n"
+            "show_ids (array of known daytime-show ids selected only from the supplied shortlist), explanation (one short sentence), "
+            "interpreted_preferences (object with tags and patterns arrays). Curated style cues are inspiration, not proof that a demo garment appeared on a show. "
+            "Outfit listings must be opened on the linked WornOnTV page. Do not infer or recommend clothing based on race or skin type. "
+            "Facial colour-tone results are optional styling inspiration only.\n"
             f"USER QUERY: {query}\nPROFILE: {json.dumps(profile, ensure_ascii=False)}\nCATALOG: {json.dumps(candidate_data, ensure_ascii=False)}\n"
             f"SHOW SHORTLIST: {json.dumps(known_shows, ensure_ascii=False)}"
         )
@@ -450,12 +436,11 @@ async def gemini_recommendations(
 
 @app.post("/api/recommendations")
 async def api_recommendations(body: RecommendationRequest, request: Request):
-    """Return garment matches without requiring a live show-catalogue request.
+    """Return garment inspiration grounded in the curated daytime-show directory.
 
-    TVmaze discovery is loaded separately by /api/catalog. A search should remain
-    fast and available even when that public metadata service is slow or down.
-    Explicit show context from the browser makes show-inspired searches work for
-    any loaded TVmaze show, while the product results remain grounded in PRODUCTS.
+    This endpoint makes no external show-catalogue request. Explicit show context
+    narrows inspiration to relevant demo products; actual outfit listings remain
+    on WornOnTV.
     """
     require_session(request)
     shows = SHOWS
@@ -470,8 +455,8 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
     if body.focus_show_name:
         cues = ", ".join(body.focus_show_tags) or "the show's broader visual aesthetic"
         ai_query = (
-            f"Find garments from the current catalogue with a similar aesthetic to the TV show "
-            f"{body.focus_show_name}. Style cues: {cues}. These are inspiration matches, not verified costumes. "
+            f"Find garment inspiration from the current demo catalogue with a similar aesthetic to daytime show "
+            f"{body.focus_show_name}. Style cues: {cues}. These are not verified on-screen items; actual wardrobe listings are on WornOnTV. "
             f"Additional user request: {body.query}"
         )
 
@@ -514,9 +499,9 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         "show_recommendations": [show["id"] for show in show_recommendations],
         "show_recommendation_details": show_recommendations,
         "catalogue_source": {
-            "source": "styleTV curated starter metadata",
+            "source": "Curated daytime show directory",
             "count": len(shows),
-            "limit": 450,
+            "limit": len(shows),
         },
         "interpreted_preferences": (ai or {}).get("interpreted_preferences", {}),
     }
