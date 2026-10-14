@@ -548,3 +548,11 @@ input[type="file"]::file-selector-button { border: 1px solid var(--line); border
 @media (max-width: 560px) {
   .show-card-image-credit { padding-inline: 12px; }
 }
+
+/* Wardrobe-source recommendations: show pages, not generic sample garments. */
+.provider-status { margin: 7px 0 18px; color: var(--ink-soft); font-size: .78rem; line-height: 1.55; }
+.recommendation-grid { margin-top: 18px; }
+.wardrobe-primary-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; margin-top: 12px; width: 100%; }
+.outfit-source-note { margin: 9px 0 0; color: var(--ink-soft); font-size: .75rem; line-height: 1.5; }
+#try-on-reference-photo { margin: 8px 0 14px; }
+.try-on-product a { display: inline-block; margin-top: 7px; font-size: .85rem; font-weight: 650; }

@@ -42,10 +42,8 @@
     profile: structuredClone(DEFAULT_PROFILE),
     settings: { theme: 'light', fontSize: 'medium', walkthroughSeen: false },
     shows: [],
-    products: [],
-    savedIds: new Set(),
     currentView: 'discover',
-    currentProduct: null,
+    currentShowId: null,
     recommendationRequestId: 0,
     config: { gemini_configured: false, youcam_configured: false },
     filteredShows: null,
@@ -98,8 +96,7 @@
     if (profileRow?.value) state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
     const settingsRow = await dbRequest('settings', 'get', SETTINGS_KEY);
     if (settingsRow?.value) state.settings = { ...state.settings, ...settingsRow.value };
-    const savedRows = await dbRequest('saved', 'getAll');
-    state.savedIds = new Set((savedRows || []).map(item => item.productId));
+    // Legacy saved-product rows from earlier prototypes are ignored; show favourites live in the profile.
     if (migrateFavoriteShows()) await persistProfile();
     applySettings();
   }
@@ -191,7 +188,6 @@
   }
 
   function findShow(id) { return state.shows.find(show => show.id === id); }
-  function findProduct(id) { return state.products.find(product => product.id === id); }
 
   function migrateFavoriteShows() {
     if (!state.shows.length) return false;
@@ -294,8 +290,8 @@
         <div class="show-card-content">
           <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
           <h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>
-          <div class="show-action-row"><button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Explore style matches</button></div>
-          <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a>
+          <div class="show-action-row"><button class="show-card-action" data-open-try-on="${escapeHTML(show.id)}">Try on an outfit</button></div>
+          <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">View actual outfits on WornOnTV ↗</a>
         </div>
       </article>`).join('');
     bindShowCardImages(target);
@@ -310,8 +306,8 @@
         <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
         <h3>${escapeHTML(show.name)}</h3><p>${escapeHTML(show.description)}</p>
         ${tags ? `<p class="show-cue-label">Style cues</p><div class="show-aesthetic-tags">${tags}</div>` : ''}
-        <div class="show-action-row">${showAction ? `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="${isFavorite}">${isFavorite ? 'Added to my shows ✓' : 'Add to my shows +'}</button>` : ''}<button class="show-card-action" data-browse-show="${escapeHTML(show.id)}">Find inspired looks</button></div>
-        <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">${escapeHTML(wardrobeSourceLabel(show))}</a>
+        <div class="show-action-row">${showAction ? `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="${isFavorite}">${isFavorite ? 'Added to my shows ✓' : 'Add to my shows +'}</button>` : ''}<button class="show-card-action" data-open-try-on="${escapeHTML(show.id)}">Try on an outfit</button></div>
+        <a class="show-card-action wardrobe-link" href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">View actual outfits on WornOnTV ↗</a>
       </div></article>`;
   }
 
@@ -392,72 +388,80 @@
     if ($('#favorite-shows')) renderFavoriteShows();
   }
 
-  function suggestedRetailerSearch(product, color) {
-    const query = `${color || ''} ${product.name}`.trim().replace(/\s+/g, ' ');
-    const retailer = (product.retailer || '').toLowerCase();
-    const encoded = encodeURIComponent(query);
-    if (retailer === 'zara') return `https://www.zara.com/us/en/search?searchTerm=${encoded}`;
-    if (retailer === 'urban outfitters') return `https://www.urbanoutfitters.com/search?q=${encoded}`;
-    if (retailer === 'etsy') return `https://www.etsy.com/search?q=${encoded}`;
-    if (retailer === "levi's") return `https://www.levi.com/US/en_US/search?q=${encoded}`;
-    if (retailer === 'h&m') return `https://www2.hm.com/en_us/search-results.html?q=${encoded}`;
-    return `https://www.asos.com/search/?q=${encoded}`;
+  function localShowRecommendations(query = '', focusShow = null) {
+    const q = query.trim().toLocaleLowerCase();
+    const favoriteIds = new Set(state.profile.favoriteShows || []);
+    const profileTags = new Set((state.profile.styleTags || []).map(value => String(value).toLocaleLowerCase()));
+    const patterns = new Set((state.profile.patterns || []).map(value => String(value).toLocaleLowerCase()));
+    const favoriteCues = new Set(state.shows.filter(show => favoriteIds.has(show.id)).flatMap(show => show.tags || []).map(value => String(value).toLocaleLowerCase()));
+    const queryWords = new Set(q.split(/[^a-z0-9]+/).filter(word => word.length > 2 && !['the','and','for','with','show','outfit','outfits','style','styles','looks','look','find','under','below','less','than','budget'].includes(word)));
+    const ranked = state.shows.filter(show => focusShow?.id === show.id || !favoriteIds.has(show.id)).map(show => {
+      const tags = new Set((show.tags || []).map(value => String(value).toLocaleLowerCase()));
+      const searchable = [show.name, show.category, show.description, ...(show.tags || [])].join(' ').toLocaleLowerCase();
+      let score = [...profileTags].filter(tag => tags.has(tag)).length * 4
+        + [...patterns].filter(tag => tags.has(tag)).length * 2.5
+        + [...favoriteCues].filter(tag => tags.has(tag)).length * 1.25
+        + [...queryWords].filter(word => tags.has(word) || searchable.includes(word)).length * 2;
+      if (q && show.name.toLocaleLowerCase() === q) score += 100;
+      else if (q && show.name.toLocaleLowerCase().includes(q)) score += 70;
+      if (focusShow?.id === show.id) score += 1000;
+      return { show, score };
+    }).sort((a, b) => b.score - a.score || a.show.name.localeCompare(b.show.name));
+    return ranked.slice(0, 6).map(({ show }) => ({
+      ...show,
+      wardrobe_url: wardrobeSource(show),
+      recommendation_reason: focusShow?.id === show.id
+        ? 'You selected this programme. Open its wardrobe page to see documented outfits worn on screen.'
+        : 'Selected from your style directions and favourite-show cues. Open WornOnTV for actual outfit records.'
+    }));
   }
 
-  function renderProduct(product) {
-    const saved = state.savedIds.has(product.id);
-    const showNames = (product.shows || []).map(id => findShow(id)?.name).filter(Boolean);
-    const wardrobeShow = wardrobeLinkForProduct(product);
-    const swatches = (product.swatches || []).map((color, index) => {
-      const label = product.colors?.[index] || `Colour ${index + 1}`;
-      return `<button type="button" class="color-swatch" data-color-select="${escapeHTML(product.id)}" data-color="${escapeHTML(label)}" style="background:${escapeHTML(color)}" aria-label="Search for ${escapeHTML(label)} alternatives to ${escapeHTML(product.name)}" title="Search ${escapeHTML(label)} alternatives" aria-pressed="${index === 0}"></button>`;
-    }).join('');
-    const canTryOn = Boolean(product.try_on_reference_url) && product.try_on_eligible !== false;
-    const tryOnButton = canTryOn
-      ? `<button type="button" class="button button-primary" data-try-on="${escapeHTML(product.id)}">Try this look</button>`
-      : `<button type="button" class="button button-primary" disabled aria-label="Virtual try-on is unavailable for ${escapeHTML(product.name)}">Try-on unavailable</button>`;
-    return `<article class="product-card" data-product-card="${escapeHTML(product.id)}">
-      <div class="product-photo"><img src="${escapeHTML(product.image)}" alt="Style reference for ${escapeHTML(product.name)}" loading="lazy" onerror="this.style.display='none'"><span class="product-tag">${escapeHTML(product.category)}</span><button type="button" class="save-look" data-save-product="${escapeHTML(product.id)}" aria-label="${saved ? 'Remove' : 'Save'} ${escapeHTML(product.name)}" aria-pressed="${saved}">${saved ? '♥' : '♡'}</button></div>
-      <div class="product-content"><h3>${escapeHTML(product.name)}</h3><p class="product-description">${escapeHTML(product.reason)}</p>
-      <p class="product-showline">Inspiration for fans of ${escapeHTML(showNames.join(' · ') || 'your style profile')}</p>
-      ${wardrobeShow ? `<a class="product-wardrobe-link" href="${escapeHTML(wardrobeSource(wardrobeShow))}" target="_blank" rel="noopener noreferrer">Explore ${escapeHTML(wardrobeShow.name)} wardrobe on WornOnTV ↗</a>` : ''}
-      <div class="product-price-row"><span class="product-price">Around $${Number(product.price).toFixed(0)}</span><span class="product-price-note">${escapeHTML(product.price_note || 'sample price')}</span></div>
-      <div class="swatch-row" aria-label="Colour ideas to explore">${swatches}</div>
-      <div class="product-actions">${tryOnButton}<a class="button button-outline" data-shop-product="${escapeHTML(product.id)}" href="${escapeHTML(product.shop_url)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a></div>
-      <p class="disclosure">Demo catalogue: colour ideas and sample prices are illustrative. Colour chips search for similar retailer listings; try-on uses the base reference image until verified variant images are added. Links do not confirm the exact garment or stock.</p></div></article>`;
-  }
-
-  function renderProducts(products = state.products, targetSelector = '#product-grid') {
-    const target = $(targetSelector);
+  function renderWardrobeRecommendations(shows = []) {
+    const target = $('#wardrobe-recommendation-grid');
     if (!target) return;
-    if (!products.length) {
-      target.innerHTML = '<div class="no-results">No looks matched those preferences. Try a different search or update your profile.</div>';
+    if (!shows.length) {
+      target.innerHTML = '<div class="no-results">No daytime wardrobe sources matched this search. Try a show title or a different style direction.</div>';
       return;
     }
-    target.innerHTML = products.map(renderProduct).join('');
-    // If a photo fails, preserve the card's layout and show a styled fallback.
-    $$('img', target).forEach(img => img.addEventListener('error', () => { img.parentElement.classList.add('image-unavailable'); }, { once: true }));
+    const favorites = new Set(state.profile.favoriteShows || []);
+    target.innerHTML = shows.map(show => {
+      const tags = (show.tags || []).slice(0, 4).map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
+      const wardrobeUrl = show.wardrobe_url || wardrobeSource(show);
+      return `<article class="show-card recommendation-card" data-recommended-show="${escapeHTML(show.id)}">
+        ${showImageMarkup(show)}
+        <div class="show-card-content">
+          <span class="show-type-label">${escapeHTML(show.category || 'Daytime show')}</span>
+          <h3>${escapeHTML(show.name)}</h3>
+          <p>${escapeHTML(show.recommendation_reason || show.description || 'Explore this programme’s wardrobe.')}</p>
+          ${tags ? `<div class="show-aesthetic-tags">${tags}</div>` : ''}
+          <div class="show-action-row">
+            ${favorites.has(show.id) ? '<span class="show-type-label">In My shows</span>' : `<button class="show-card-action" data-toggle-show="${escapeHTML(show.id)}" aria-pressed="false">Add to My shows +</button>`}
+            <button class="show-card-action" data-open-try-on="${escapeHTML(show.id)}">Try on an outfit</button>
+          </div>
+          <a class="button button-primary wardrobe-primary-link" href="${escapeHTML(wardrobeUrl)}" target="_blank" rel="noopener noreferrer">View actual outfits ↗</a>
+          <p class="outfit-source-note">The original outfit records, images, and shopping links open on WornOnTV.</p>
+        </div>
+      </article>`;
+    }).join('');
+    bindShowCardImages(target);
   }
 
   async function requestRecommendations(query = '', focusShow = null) {
     const requestId = ++state.recommendationRequestId;
     const subtitle = $('#recommendation-subtitle');
     const status = $('#recommendation-status');
+    const integrationStatus = $('#integration-status');
     if (focusShow && subtitle) {
-      subtitle.textContent = `Style matches inspired by ${focusShow.name}. These are aesthetic matches, not verified outfits worn on the show.`;
+      subtitle.textContent = `Actual outfit listings for ${focusShow.name}, with related daytime wardrobe sources below.`;
     } else if (subtitle) {
       subtitle.textContent = query
-        ? `Matches for “${query}” and your current style profile.`
-        : 'A starting point based on your current preferences.';
+        ? `Daytime wardrobe sources matching “${query}” and your profile.`
+        : 'Daytime programmes ranked from your style profile and favourite-show influences.';
     }
 
-    // Render local matches first so the button always produces immediate feedback,
-    // even if Gemini or the recommendation endpoint is slow.
-    const localProducts = localRank(query, focusShow);
-    if (state.products.length) renderProducts(localProducts);
-    if (status) status.textContent = state.config.gemini_configured
-      ? 'Showing initial matches while checking for personalized ranking…'
-      : 'Showing matches from your style profile and catalogue…';
+    const localResults = localShowRecommendations(query, focusShow);
+    renderWardrobeRecommendations(localResults);
+    if (status) status.textContent = 'Matching daytime wardrobe sources…';
 
     const requestBody = {
       query,
@@ -476,84 +480,46 @@
         signal: controller.signal
       });
       if (requestId !== state.recommendationRequestId) return;
-      const products = Array.isArray(result.products) ? result.products : [];
-      // Empty API results should not erase useful local matches. If the user's
-      // explicit budget excludes everything, preserve the empty result only when
-      // local ranking also finds nothing.
-      const finalProducts = products.length ? products : localProducts;
-      renderProducts(finalProducts);
+      const recommendations = Array.isArray(result.recommendations) ? result.recommendations : [];
+      renderWardrobeRecommendations(recommendations.length ? recommendations : localResults);
       if (status) {
-        if (products.length) {
-          const source = result.source === 'gemini' ? `Recommendations refined with ${result.model}.` : 'Catalogue matches.';
-          status.textContent = `${source} ${result.explanation || 'Based on your current preferences.'}`;
+        if (result.source === 'gemini') {
+          status.textContent = `Gemini (${result.model}) ranked these daytime wardrobe sources. ${result.explanation || ''}`.trim();
+        } else if (result.ai_status === 'fallback') {
+          status.textContent = `Gemini did not return a usable ranking; profile-based recommendations are shown instead. ${result.explanation || ''}`.trim();
         } else {
-          status.textContent = finalProducts.length
-            ? 'Showing local catalogue matches; no additional server matches were returned.'
-            : 'No items match this budget and request. Increase your budget or try different style terms.';
+          status.textContent = `Profile-based recommendations. ${result.explanation || ''}`.trim();
         }
+      }
+      if (integrationStatus) {
+        const geminiState = result.ai_status === 'used' ? 'Gemini API was used for this result.'
+          : result.ai_status === 'fallback' ? 'Gemini is configured, but this result used the profile fallback.'
+            : 'Gemini key is not configured; this result uses profile matching.';
+        integrationStatus.textContent = `${geminiState} YouCam is used only when you explicitly run virtual try-on or colour analysis; photos are not sent during recommendations.`;
       }
     } catch (error) {
       if (requestId !== state.recommendationRequestId) return;
-      renderProducts(localProducts);
-      if (status) {
-        status.textContent = error.name === 'AbortError'
-          ? 'The recommendation service took too long. Showing local catalogue matches instead.'
-          : 'The recommendation service is unavailable. Showing local catalogue matches instead.';
-      }
-      if (error.name !== 'AbortError') showAlert(error.message || 'Could not contact recommendations; local matching is available.', 'error');
+      renderWardrobeRecommendations(localResults);
+      if (status) status.textContent = error.name === 'AbortError'
+        ? 'The recommendation endpoint timed out. Showing local profile matches; actual outfit listings are still available through WornOnTV.'
+        : 'The recommendation endpoint is unavailable. Showing local profile matches; actual outfit listings are still available through WornOnTV.';
+      if (integrationStatus && error.name !== 'AbortError') integrationStatus.textContent = `Recommendation request failed: ${error.message}. YouCam is separate and is only called when you run a photo-based tool.`;
+      if (error.name !== 'AbortError') showAlert(error.message || 'Could not contact recommendations; local show matching is available.', 'error');
     } finally {
       window.clearTimeout(timeoutId);
     }
   }
 
-  function GEMINI_STATUS() { return state.config.gemini_configured ? 'Gemini personalization is available.' : 'Using the built-in catalogue matcher until Gemini is configured.'; }
-
-  function localRank(query = '', focusShow = null) {
-    const q = query.toLowerCase();
-    const profile = state.profile;
-    const focusTags = new Set((focusShow?.tags || []).map(tag => String(tag).toLowerCase()));
-    const favored = new Set(profile.favoriteShows || []);
-    const queryShows = state.shows
-      .filter(show => show.name && q.includes(show.name.toLowerCase()))
-      .sort((a, b) => b.name.length - a.name.length);
-    const queryShowIds = new Set(queryShows.map(show => show.id));
-    const queryShowTags = new Set(queryShows.flatMap(show => show.tags || []).map(tag => String(tag).toLowerCase()));
-    const style = new Set((profile.styleTags || []).map(x => x.toLowerCase()));
-    const patterns = new Set((profile.patterns || []).map(x => x.toLowerCase()));
-    const colors = new Set((profile.colorPreferences || []).map(x => x.toLowerCase()));
-    const budgetMatch = q.match(/\b(?:under|below|less than|up to|max(?:imum)?)\s*\$?\s*(\d+(?:\.\d+)?)/i);
-    const budget = budgetMatch ? Number(budgetMatch[1]) : (profile.budget === 'any' ? null : Number(profile.budget));
-    const candidates = state.products.filter(product => budget == null || !Number.isFinite(budget) || Number(product.price) <= budget);
-    return candidates.sort((a, b) => {
-      const score = p =>
-        (p.tags || []).filter(t => style.has(t.toLowerCase()) || q.includes(t.toLowerCase())).length * 3 +
-        (p.tags || []).filter(t => focusTags.has(t.toLowerCase()) || queryShowTags.has(t.toLowerCase())).length * 4 +
-        (p.patterns || []).filter(t => patterns.has(t.toLowerCase()) || q.includes(t.toLowerCase()) || focusTags.has(t.toLowerCase()) || queryShowTags.has(t.toLowerCase())).length * 2 +
-        (p.colors || []).filter(t => colors.has(t.toLowerCase()) || q.includes(t.toLowerCase())).length +
-        (p.shows || []).filter(t => favored.has(t) || queryShowIds.has(t) || (focusShow && focusShow.id === t)).length * 3;
-      return score(b) - score(a);
-    }).slice(0, 6);
-  }
-
-  async function toggleSaved(productId) {
-    if (state.savedIds.has(productId)) {
-      state.savedIds.delete(productId);
-      await dbRequest('saved', 'delete', productId);
-      showAlert('Removed from saved looks.', 'good');
-    } else {
-      state.savedIds.add(productId);
-      await dbRequest('saved', 'put', { productId, savedAt: new Date().toISOString() });
-      showAlert('Saved to your looks on this browser.', 'good');
-    }
-    renderProducts(state.products);
-    if (state.currentView === 'saved') renderSaved();
-  }
-
   function renderSaved() {
-    const products = state.products.filter(product => state.savedIds.has(product.id));
-    renderProducts(products, '#saved-product-grid');
-    $('#saved-empty').hidden = products.length > 0;
-    $('#saved-product-grid').hidden = products.length === 0;
+    const target = $('#saved-wardrobe-grid');
+    const empty = $('#saved-empty');
+    if (!target || !empty) return;
+    const favoriteIds = new Set(state.profile.favoriteShows || []);
+    const savedShows = state.shows.filter(show => favoriteIds.has(show.id));
+    target.innerHTML = savedShows.length ? savedShows.map(show => renderShowCard(show, true, false)).join('') : '';
+    target.hidden = !savedShows.length;
+    empty.hidden = savedShows.length > 0;
+    bindShowCardImages(target);
   }
 
   function switchView(view) {
@@ -639,18 +605,24 @@
     }).catch(error => showAlert(`Could not update shows: ${error.message}`, 'error'));
   }
 
-  function openTryOn(productId) {
-    const product = findProduct(productId);
-    if (!product) return;
-    state.currentProduct = product;
-    $('#try-on-title').textContent = 'Try this look on.';
-    $('#try-on-product').innerHTML = `<img src="${escapeHTML(product.image)}" alt="Selected style reference"><div><strong>${escapeHTML(product.name)}</strong><p>${escapeHTML(product.category)} · ${escapeHTML(product.retailer)} search available</p></div>`;
+  function openTryOn(showId = null) {
+    const show = findShow(showId);
+    state.currentShowId = show?.id || null;
+    $('#try-on-title').textContent = show ? `Try on an outfit from ${show.name}.` : 'Try on a specific outfit.';
+    $('#try-on-product').innerHTML = show
+      ? `<div><strong>${escapeHTML(show.name)}</strong><p>Open the official wardrobe page to inspect the documented outfit. For try-on, only use a reference image you own or are authorized to submit for AI processing.</p><a href="${escapeHTML(wardrobeSource(show))}" target="_blank" rel="noopener noreferrer">Open ${escapeHTML(show.name)} outfits on WornOnTV ↗</a></div>`
+      : '<div><strong>Use an actual outfit image</strong><p>Choose an image from the wardrobe page for the specific look you want to preview.</p></div>';
     $('#try-on-form').hidden = false;
     $('#try-on-status').hidden = true;
     $('#try-on-result').hidden = true;
     $('#try-on-result').innerHTML = '';
     $('#try-on-photo').value = '';
+    $('#try-on-reference-photo').value = '';
     $('#try-on-consent').checked = false;
+    const keyNote = $('#try-on-api-note');
+    if (keyNote) keyNote.textContent = state.config.youcam_configured
+      ? 'YouCam API key is configured. A live Clothes V4 task starts after you submit both images and consent.'
+      : 'YouCam is not configured on this deployment. No image will be uploaded until YCE_API_KEY is set on the server and the app is redeployed.';
     const dialog = $('#try-on-dialog');
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
@@ -684,43 +656,45 @@
 
   async function submitTryOn(event) {
     event.preventDefault();
-    const product = state.currentProduct;
     const photo = $('#try-on-photo').files?.[0];
-    if (!product || !photo) {
-      setTryOnStatus('Choose a JPG or PNG photo first.', true);
+    const outfitReference = $('#try-on-reference-photo').files?.[0];
+    if (!photo || !outfitReference) {
+      setTryOnStatus('Choose both your photo and the actual outfit reference image.', true);
       return;
     }
     if (!$('#try-on-consent').checked) {
-      setTryOnStatus('Consent is required before your photo is sent to YouCam.', true);
+      setTryOnStatus('Consent is required before either image is sent to YouCam.', true);
       return;
     }
     if (!state.config.youcam_configured) {
-      setTryOnStatus('Live YouCam is not configured on this deployment. Add YCE_API_KEY to Vercel environment variables, redeploy, and try again. Your photo has not been uploaded.', true);
+      setTryOnStatus('Live YouCam is not configured on this deployment. Add YCE_API_KEY to Vercel environment variables and redeploy. Neither image has been uploaded.', true);
       return;
     }
-    if (!['image/jpeg', 'image/png'].includes(photo.type)) {
-      setTryOnStatus('Please use a JPG or PNG image.', true);
+    if (![photo, outfitReference].every(file => ['image/jpeg', 'image/png'].includes(file.type))) {
+      setTryOnStatus('Please use JPG or PNG files for both images.', true);
       return;
     }
-    if (photo.size > 9_500_000) {
-      setTryOnStatus('Choose an image smaller than 9.5 MB.', true);
+    if ([photo, outfitReference].some(file => !file.size || file.size > 9_500_000)) {
+      setTryOnStatus('Both images must be non-empty and smaller than 9.5 MB each.', true);
       return;
     }
     $('#try-on-form').querySelector('button[type="submit"]').disabled = true;
-    setTryOnStatus('Preparing your image for YouCam…');
+    setTryOnStatus('Uploading both images to YouCam…');
     try {
       const form = new FormData();
       form.append('photo', photo);
+      form.append('outfit_reference', outfitReference);
+      form.append('garment_category', 'auto');
       form.append('consent', 'true');
-      const task = await apiFetch(`/api/try-on/${encodeURIComponent(product.id)}`, { method: 'POST', body: form });
+      const task = await apiFetch('/api/try-on', { method: 'POST', body: form });
       const result = await pollTask('try-on', task.task_id);
-      if (result.status === 'error') throw new Error(result.message || 'The try-on could not be completed. Try another photo.');
-      if (!result.result_url) throw new Error(result.message || 'The try-on completed without a recognized result image.');
+      if (result.status === 'error') throw new Error(result.message || 'YouCam could not process this outfit. Try images with a clearer view of the clothing.');
+      if (!result.result_url) throw new Error(result.message || 'YouCam completed the task without a recognized result image.');
       $('#try-on-result').hidden = false;
-      $('#try-on-result').innerHTML = `<img src="${escapeHTML(result.result_url)}" alt="AI-generated virtual try-on result"><p>${escapeHTML(result.message || 'Visual preview only. Actual fit and colour may differ.')}</p>`;
-      setTryOnStatus('Your virtual try-on is ready.');
+      $('#try-on-result').innerHTML = `<img src="${escapeHTML(result.result_url)}" alt="YouCam virtual try-on result using the outfit image you selected"><p>${escapeHTML(result.message || 'Visual preview only. Actual fit and colour may differ.')}</p>`;
+      setTryOnStatus('YouCam Clothes V4 completed your virtual try-on.');
     } catch (error) {
-      setTryOnStatus(error.message || 'Something went wrong. Try again.', true);
+      setTryOnStatus(error.message || 'YouCam could not complete the task. Try again.', true);
     } finally {
       $('#try-on-form').querySelector('button[type="submit"]').disabled = false;
     }
@@ -736,7 +710,7 @@
     const order = ['skin_color', 'hair_color', 'eye_color', 'eyebrow_color', 'lip_color'];
     const labels = { skin_color: 'Skin tone', hair_color: 'Hair colour', eye_color: 'Eye colour', eyebrow_color: 'Eyebrow colour', lip_color: 'Lip colour' };
     const items = order.filter(key => /^#[0-9a-f]{6}$/i.test(colors[key] || '')).map(key => `<div class="detected-color"><span class="detected-color-swatch" style="background:${escapeHTML(colors[key])}"></span><span><strong>${escapeHTML(labels[key])}</strong><small>${escapeHTML(colors[key])}${colors[`${key}_name`] ? ` · ${escapeHTML(colors[`${key}_name`])}` : ''}</small></span></div>`).join('');
-    target.innerHTML = `<div class="color-palette-results"><h3>Your colour notes</h3><p>These are the facial colour cues detected by YouCam. Use them to explore outfits; there is no single correct palette.</p><div class="detected-colors">${items || '<p>Analysis completed, but no recognized hex colour values were returned.</p>'}</div><button type="button" class="button button-outline" id="use-colour-notes" style="margin-top:14px">Refresh recommendations with colour notes</button></div>`;
+    target.innerHTML = `<div class="color-palette-results"><h3>Your colour notes</h3><p>These are the facial colour cues detected by YouCam. Use them as optional styling inspiration; actual on-screen outfits are listed on each show's WornOnTV page.</p><div class="detected-colors">${items || '<p>Analysis completed, but no recognized hex colour values were returned.</p>'}</div></div>`;
   }
 
   async function runColorAnalysis() {
@@ -787,45 +761,11 @@
         }
         return;
       }
-      const browseButton = event.target.closest('[data-browse-show]');
-      if (browseButton) {
-        const show = findShow(browseButton.dataset.browseShow);
-        if (!show) {
-          showAlert('This show is no longer in the loaded catalogue. Refresh the page and try again.', 'error');
-          return;
-        }
-        switchView('discover');
-        const query = show.name;
-        const searchInput = $('#style-search');
-        if (searchInput) searchInput.value = query;
-        // Pass the selected show explicitly. This prevents the generic discover
-        // request from racing and overwriting the requested show matches.
-        await requestRecommendations(query, show);
-        return;
-      }
+      const tryOnButton = event.target.closest('[data-open-try-on]');
+      if (tryOnButton) { openTryOn(tryOnButton.dataset.openTryOn || null); return; }
       const toggleButton = event.target.closest('[data-toggle-show]');
       if (toggleButton) { await changeFavorite(toggleButton.dataset.toggleShow); return; }
-      const saveButton = event.target.closest('[data-save-product]');
-      if (saveButton) { await toggleSaved(saveButton.dataset.saveProduct); return; }
-      const tryOnButton = event.target.closest('[data-try-on]');
-      if (tryOnButton) { openTryOn(tryOnButton.dataset.tryOn); return; }
-      const colorButton = event.target.closest('[data-color-select]');
-      if (colorButton) {
-        const product = findProduct(colorButton.dataset.colorSelect);
-        if (!product) return;
-        const card = colorButton.closest('.product-card');
-        $$('.color-swatch', card).forEach(button => button.setAttribute('aria-pressed', String(button === colorButton)));
-        const shopLink = $('[data-shop-product]', card);
-        if (shopLink) shopLink.href = suggestedRetailerSearch(product, colorButton.dataset.color);
-        if (shopLink) shopLink.textContent = `Shop ${colorButton.dataset.color} ↗`;
-        return;
-      }
       if (event.target.closest('.dialog-close')) closeTryOn();
-      if (event.target.id === 'use-colour-notes') {
-        await requestRecommendations('Use my facial colour notes as optional inspiration for clothing colour combinations.');
-        showAlert('Recommendations refreshed. Your colour analysis is an optional input, not a rule.', 'good');
-        switchView('discover');
-      }
     });
 
     $('.theme-toggle')?.addEventListener('click', async () => {
@@ -880,21 +820,32 @@
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('#try-on-dialog')?.open) closeTryOn(); });
   }
 
+  function renderProviderStatus() {
+    const target = $('#integration-status');
+    if (!target) return;
+    const geminiText = state.config.gemini_configured
+      ? `Gemini key configured (${state.config.gemini_model || 'configured model'}); each search reports whether the Gemini ranker returned a valid result.`
+      : 'Gemini key is not configured; show recommendations use the local profile matcher.';
+    const youcamText = state.config.youcam_configured
+      ? 'YouCam key is configured; Clothes V4 and facial colour-tone analysis run only when you submit a photo task and consent.'
+      : 'YouCam key is not configured; photo-based tools will not upload images or return mock results.';
+    target.textContent = `${geminiText} ${youcamText}`;
+  }
+
   async function init() {
-    // Wire interactions immediately and load IndexedDB independently from the
-    // product catalogue. A browser storage stall must never disable garment search.
+    // Wire interactions immediately and load IndexedDB independently from the show directory.
     attachEvents();
     const localStatePromise = (async () => {
       try {
         state.db = await openDatabase();
         await loadLocalState();
-        // If the catalogue has already loaded, apply stored preferences and refresh
-        // the current result set after IndexedDB resolves.
-        if (state.products.length) {
+        // Apply saved preferences and refresh the current show recommendations after storage resolves.
+        if (state.shows.length) {
           migrateFavoriteShows();
           renderProfileChoices();
           renderFavoriteShows();
           renderShows($('#show-search')?.value || '');
+          renderSaved();
           requestRecommendations($('#style-search')?.value.trim() || '');
         }
       } catch (error) {
@@ -910,7 +861,6 @@
         apiFetch('/api/config', { method: 'GET' })
       ]);
       state.shows = catalog.shows || [];
-      state.products = catalog.products || [];
       if (migrateFavoriteShows() && state.db) await persistProfile();
       state.catalogueMeta = catalog.catalogue || null;
       state.config = config;
@@ -922,7 +872,8 @@
       renderProfileChoices();
       renderFavoriteShows();
       renderShows($('#show-search')?.value || '');
-      // Results render locally immediately; API-based ranking runs in the background.
+      renderSaved();
+      renderProviderStatus();
       requestRecommendations($('#style-search')?.value.trim() || '');
       buildQuizFromProfile();
       if (!state.settings.walkthroughSeen) openWalkthrough();
@@ -932,6 +883,7 @@
         findButton.disabled = false;
         findButton.textContent = 'Find my looks →';
       }
+      renderProviderStatus();
       showAlert(error.message || 'Could not load styleTV data.', 'error');
     }
     // Do not await storage before enabling search. Storage can finish after the

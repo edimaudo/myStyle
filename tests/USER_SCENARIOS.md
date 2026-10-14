@@ -1,97 +1,42 @@
-# styleTV manual user scenarios
+# styleTV user scenarios
 
-These are repeatable user-acceptance scenarios for the current demo catalogue. The local show directory is deliberately limited to daytime soaps, morning shows, talk shows and entertainment programmes represented on WornOnTV. Demo prices and shopping search links are not verified product listings.
+## 1. Browse the daytime directory
 
-## TS-01 — New user asks for help finding a look
+- Sign in with the demo account.
+- Search for a daytime programme such as `The View` or `Today`.
+- Confirm the selected programme appears first in Discover.
+- Open `View actual outfits` and verify it navigates directly to the programme's WornOnTV wardrobe page.
+- Confirm there are no generic sample garment/product cards presented as outfits from the programme.
 
-**Enter:** “I like the polished blazers and statement colours I see on The View. Suggest three wearable looks for under $100 each.”
+## 2. Personalize show recommendations
 
-**Expected:** Product matches come from the current catalogue, each with a style explanation, sample price, show-style cues, colour search options and retailer search link. Explicit budget wording acts as a ceiling. The app doesn't invent products or exact prices.
+- Add one or two programmes to `My shows`.
+- Complete the style quiz and choose a few style directions/patterns.
+- Return to Discover and confirm the recommended daytime wardrobe sources update.
+- Use the on-screen integration status and result message to tell whether Gemini ranked the request or the local profile matcher was used.
 
-## TS-02 — Complete the style quiz
+## 3. Virtual try-on with the selected outfit
 
-**Action:** Select tailoring, bold colour or florals, medium boldness and an $80 budget. Submit the quiz.
+- Open a show's outfit listings on WornOnTV to inspect documented outfits.
+- Open `Try on an outfit` from the show's card.
+- Upload a personal photo and an outfit-reference image that you own or have permission to submit for AI processing. Do not copy/upload WornOnTV materials without permission under its terms.
+- Confirm the consent checkbox is required and no image is uploaded when consent is absent.
+- With `YCE_API_KEY` configured, confirm the backend uploads both files to YouCam's File API, invokes Clothes V4 with `src_file_id` and `ref_file_id`, polls the real task, and displays the returned result URL.
+- Without `YCE_API_KEY`, confirm the UI explains the integration is not configured and does not display a fabricated result.
 
-**Expected:** Answers persist in IndexedDB, recommendations refresh and the style profile shows the same choices. The user can retake the quiz.
+## 4. Facial colour-tone analysis
 
-## TS-03 — Search and favourite a show
+- In My style profile, select a front-facing selfie and explicitly consent.
+- With `YCE_API_KEY` configured, confirm the backend uploads the photo and starts the YouCam skin-tone-analysis task.
+- Confirm result colours are saved locally but the image itself is not stored by styleTV.
+- Without the key, confirm the UI clearly reports that live processing is unavailable.
 
-**Enter:** Search “The View”, add it to My shows, then remove it again.
+## 5. Saved wardrobes
 
-**Expected:** Search filters the catalogue, the favourite state updates immediately after persistence, and recommendations refresh when shows are added or removed.
+- Add a daytime programme to My shows.
+- Open Saved wardrobes and confirm the programme appears with its direct WornOnTV link.
+- Remove the programme from My shows and confirm it no longer appears in Saved wardrobes.
 
-## TS-04 — Explore outfits from a specific show
+## Known source constraint
 
-**Action:** Open Explore looks on a show card that is not currently a favourite.
-
-**Expected:** The selected daytime show and its curated style cues receive priority in the illustrative product list. The app doesn't require the user to add the show as a favourite first.
-
-## TS-05 — Discover shows by aesthetic
-
-**Enter:** “I like tailoring, florals and bold colour. Recommend daytime shows with similar style cues that I haven't selected.”
-
-**Expected:** The daytime-show area prioritizes Gemini-provided show IDs when Gemini is configured; otherwise, it uses curated style tags. Existing favourites are excluded from the discovery list.
-
-## TS-06 — Change style preferences over time
-
-**Enter:** “Keep The View as a favourite, but add brighter colours and geometric patterns. My budget is still $100.”
-
-**Expected:** Updating the profile changes matching behaviour, keeps the favourite show, preserves saved looks and applies the revised budget. Revisions don't require a new account.
-
-## TS-07 — Explicit budget is respected
-
-**Enter:** “Find me a bold tailored look for under $100.”
-
-**Expected:** Returned sample products are priced at $100 or less. A query budget overrides the saved profile budget for that request; it does not change the saved budget unless the user edits the profile.
-
-## TS-08 — Start a real YouCam virtual try-on
-
-**Action:** Select an eligible garment, choose a suitable JPG/PNG photo, read and accept consent, and submit.
-
-**Expected with `YCE_API_KEY`:** styleTV transfers the photo server-side to YouCam, starts Clothes V4, polls task status, then displays the returned result URL. It reports provider errors or timeouts without discarding the chosen item.
-
-**Expected without `YCE_API_KEY`:** The UI explains how to configure the provider and confirms the photo was not uploaded. It must not show a fake completed result.
-
-## TS-09 — Try-on rejects unsuitable inputs safely
-
-**Action:** Attempt to submit without consent, with an unsupported file type, an image larger than 9.5 MB, or with no photo.
-
-**Expected:** The request is blocked with a useful message. No provider upload is initiated before consent and file validation.
-
-## TS-10 — Use facial colour-tone analysis
-
-**Action:** In My style profile, select a clear front-facing JPG/PNG selfie, accept the separate consent and start analysis.
-
-**Expected with `YCE_API_KEY`:** The app polls the YouCam Facial Color Tones Analyzer, shows returned facial colour hex values, and saves those colour notes—not the photo—in IndexedDB.
-
-**Expected without `YCE_API_KEY`:** The user can continue normal discovery and sees an explanation that analysis is not configured. No claim of analysis is made.
-
-## TS-11 — Colour ideas and shopping alternatives
-
-**Action:** Select a colour swatch on a product card.
-
-**Expected:** The retailer search link changes to look for alternatives in that colour. The UI explains that these are colour ideas; the current demo's VTO uses the base reference image until real, verified colour-variant images are added.
-
-## TS-12 — Save and revisit a look
-
-**Action:** Save a product, navigate elsewhere, reload the app, then open Saved looks and remove it.
-
-**Expected:** The saved ID persists in this browser's IndexedDB across navigation and reload. The demo does not imply cross-device synchronization.
-
-## TS-13 — Sign in and sign out
-
-**Action:** Sign in with the demo credentials, edit the display name, sign out, then sign in again.
-
-**Expected:** The server-side demo session ends on sign-out. Local preferences and saved look IDs remain in IndexedDB. The changed profile name remains after signing back in on the same browser.
-
-## TS-14 — Accessibility and responsive checks
-
-**Action:** Test keyboard-only navigation, focus visibility, upload controls, quiz choices, the VTO dialog, screen-reader labels, text size small/medium/large, light/dark mode, and a narrow mobile viewport.
-
-**Expected:** Controls remain visible and operable; medium is the default; contrast stays adequate; users can close the dialog with its close button or Escape; reduced-motion preference is respected; and content doesn't require horizontal page scrolling at mobile widths.
-
-## TS-15 — Gemini fallback and daytime catalogue grounding
-
-**Action:** Search in natural language with Gemini configured, then repeat with `GEMINI_API_KEY` unset or invalid.
-
-**Expected:** When configured and successful, Gemini may rank only IDs present in the server's catalogue; retailer links and sample prices remain sourced from demo catalogue data. Show cards link to WornOnTV for actual outfit listings; styleTV does not reproduce those listings. When unavailable, deterministic matching continues to work and reports that the fallback is in use.
+WornOnTV's current Terms of Use prohibit copying its materials or mirroring them on another server. Until a supported data feed/API or written permission is obtained, styleTV links to the actual outfit pages rather than copying WornOnTV's outfit records or photos into its own catalogue.

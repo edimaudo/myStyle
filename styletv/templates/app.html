@@ -35,7 +35,7 @@
         <button class="side-nav-link" data-view="shows"><span aria-hidden="true">▤</span> My shows</button>
         <button class="side-nav-link" data-view="quiz"><span aria-hidden="true">✳</span> Style quiz</button>
         <button class="side-nav-link" data-view="profile"><span aria-hidden="true">◉</span> My style profile</button>
-        <button class="side-nav-link" data-view="saved"><span aria-hidden="true">♡</span> Saved looks</button>
+        <button class="side-nav-link" data-view="saved"><span aria-hidden="true">♡</span> Saved wardrobes</button>
         <button class="side-nav-link help-nav-link" type="button" id="open-walkthrough">How styleTV works</button>
       </nav>
     </aside>
@@ -43,14 +43,15 @@
     <main id="app-main" class="app-main" tabindex="-1">
       <div id="app-alert" class="app-alert" role="status" aria-live="polite" hidden></div>
       <section class="app-view is-active" id="view-discover" data-view-panel="discover">
-        <div class="welcome-row"><div><h1>Find your kind of style.</h1><p class="page-lede">Start with a show you love, a look you spotted, or a style you want to try.</p></div><div class="welcome-actions"><button class="button button-outline" data-go-view="quiz">Take the style quiz</button><button class="button button-primary" data-go-view="profile">Update my style</button></div></div>
-        <form id="style-search-form" class="search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="style-search">Search shows, styles or describe an outfit</label><input id="style-search" name="query" type="search" placeholder="Try “The View-inspired blazer under $100”" autocomplete="off"><button id="find-looks-button" class="button button-primary" type="submit" disabled>Loading styles…</button></form>
+        <div class="welcome-row"><div><h1>Find your kind of style.</h1><p class="page-lede">Find the exact outfit listings tied to daytime shows. Recommendations point to real wardrobe records, not generic sample garments.</p></div><div class="welcome-actions"><button class="button button-outline" data-go-view="quiz">Take the style quiz</button><button class="button button-primary" data-go-view="profile">Update my style</button></div></div>
+        <form id="style-search-form" class="search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="style-search">Search shows, styles or describe an outfit</label><input id="style-search" name="query" type="search" placeholder="Search a daytime show or style direction (e.g. The View, tailoring)" autocomplete="off"><button id="find-looks-button" class="button button-primary" type="submit" disabled>Loading styles…</button></form>
         <div class="section-heading-row"><div><h2>Your shows</h2><p>Wardrobe inspiration from the daytime shows you follow.</p></div><button class="text-link" data-go-view="shows">Edit shows <span aria-hidden="true">→</span></button></div>
         <div id="favorite-shows" class="show-strip" aria-live="polite"></div>
-        <div class="section-heading-row looks-heading"><div><h2>Picked for your style</h2><p id="recommendation-subtitle">A starting point based on your current preferences.</p></div></div>
-        <div id="recommendation-status" class="inline-status" aria-live="polite">Loading your style catalogue…</div>
-        <div id="product-grid" class="product-grid" aria-live="polite"></div>
-        <section class="discovery-callout"><div class="callout-mark" aria-hidden="true">✳</div><div><h2>Ready for something new?</h2><p>Find shows with wardrobe details that match your taste—even if you have never watched them.</p></div><button class="button button-primary" data-go-view="shows" data-focus-new-shows="true">Discover new shows <span aria-hidden="true">→</span></button></section>
+        <div class="section-heading-row looks-heading"><div><h2>Wardrobes to explore</h2><p id="recommendation-subtitle">Daytime programmes ranked from your saved preferences.</p></div></div>
+        <div id="recommendation-status" class="inline-status" aria-live="polite">Loading show recommendations…</div>
+        <p id="integration-status" class="provider-status" aria-live="polite">Checking recommendation and YouCam configuration…</p>
+        <div id="wardrobe-recommendation-grid" class="show-grid recommendation-grid" aria-live="polite"></div>
+        <section class="discovery-callout"><div class="callout-mark" aria-hidden="true">✳</div><div><h2>Ready for something new?</h2><p>Explore more daytime programmes with documented outfit listings.</p></div><button class="button button-primary" data-go-view="shows" data-focus-new-shows="true">Discover new shows <span aria-hidden="true">→</span></button></section>
       </section>
 
       <section class="app-view" id="view-quiz" data-view-panel="quiz" hidden>
@@ -60,30 +61,30 @@
           <section class="profile-card"><div class="profile-card-heading"><div><h2>2. Which patterns would you try?</h2><p>Pick what catches your eye, even if you're still experimenting.</p></div><span class="profile-section-number">02 / 05</span></div><div id="quiz-pattern-choices" class="choice-group"></div></section>
           <section class="profile-card"><div class="profile-card-heading"><div><h2>3. Which colour directions do you reach for?</h2><p>You can still try colours outside this list later.</p></div><span class="profile-section-number">03 / 05</span></div><div id="quiz-color-choices" class="choice-group"></div></section>
           <section class="profile-card"><div class="profile-card-heading"><div><h2>4. How far do you want to push it?</h2><p>We'll use this as a starting point, not a rule.</p></div><span class="profile-section-number">04 / 05</span></div><div id="quiz-boldness-choices" class="choice-group"></div></section>
-          <section class="profile-card"><div class="profile-card-heading"><div><h2>5. What is your maximum price per item?</h2><p>This budget also applies to the recommendations on Discover. You can change it in your profile at any time.</p></div><span class="profile-section-number">05 / 05</span></div><div id="quiz-budget-choices" class="choice-group"></div></section>
-          <div class="profile-actions"><p>We'll save this profile in IndexedDB on this browser.</p><button type="submit" class="button button-primary button-large">Show me my looks <span aria-hidden="true">→</span></button></div>
+          <section class="profile-card"><div class="profile-card-heading"><div><h2>5. What is your maximum price per item?</h2><p>Save your shopping preference here. Item-level budget filtering is not available in this version because actual prices stay on WornOnTV and retailer pages.</p></div><span class="profile-section-number">05 / 05</span></div><div id="quiz-budget-choices" class="choice-group"></div></section>
+          <div class="profile-actions"><p>We'll save this profile in IndexedDB on this browser.</p><button type="submit" class="button button-primary button-large">Find matching show wardrobes <span aria-hidden="true">→</span></button></div>
         </form>
       </section>
 
       <section class="app-view" id="view-shows" data-view-panel="shows" hidden>
-        <div class="welcome-row"><div><h1>Find daytime shows to follow.</h1><p class="page-lede">Browse daytime soaps, morning shows and talk shows covered by WornOnTV. Add favourites to personalize Discover, or open a show to see its outfit listings.</p></div></div>
+        <div class="welcome-row"><div><h1>Find daytime shows to follow.</h1><p class="page-lede">Choose a programme and open its original wardrobe page to see documented outfits worn by the hosts, guests or characters. styleTV does not reproduce those third-party listings.</p></div></div>
         <div class="search-panel show-search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="show-search">Search shows</label><input id="show-search" type="search" placeholder="Search a show or style (e.g. The View, morning show, tailoring)" autocomplete="off"><button class="button button-outline" id="clear-show-search" type="button">Clear search</button></div>
         <div class="show-filter-tabs" role="group" aria-label="Filter daytime shows"><button type="button" data-show-filter="all" aria-pressed="true">All daytime shows</button><button type="button" data-show-filter="favorites" aria-pressed="false">My favourites</button><button type="button" data-show-filter="recommended" aria-pressed="false">Recommended for me</button></div>
         <div class="section-heading-row"><div><h2 id="show-list-heading">All daytime shows</h2><p id="show-results-count" class="show-results-count" aria-live="polite">Loading daytime shows…</p></div></div>
         <div id="all-shows-grid" class="show-grid"></div>
         <div class="show-load-more-wrap"><button id="load-more-shows" class="button button-outline" type="button" hidden>Load more shows</button></div>
-        <p class="source-attribution">Show directory curated for daytime programming. <a href="https://wornontv.net/" target="_blank" rel="noopener noreferrer">Search all shows on WornOnTV ↗</a>. WornOnTV links lead to actual outfit listings; styleTV’s suggested garments are illustrative inspiration, not verified on-screen items.</p>
+        <p class="source-attribution">Show directory curated for daytime programming. <a href="https://wornontv.net/" target="_blank" rel="noopener noreferrer">Search all shows on WornOnTV ↗</a>. Outfit photos, item details and shopping links remain on the source site.</p>
         <section id="new-shows-section" class="new-shows-section"><div class="section-heading-row"><div><h2>Explore other daytime shows</h2><p>More shows to explore based on the style cues in your profile.</p></div></div><div id="new-shows-grid" class="show-grid"></div></section>
       </section>
 
       <section class="app-view" id="view-profile" data-view-panel="profile" hidden>
         <div class="welcome-row"><div><h1>My style profile.</h1><p class="page-lede">Edit your preferences whenever they change. Recommendations should follow you, not lock you into a look.</p></div><button class="button button-primary" id="save-profile-top">Save changes</button></div>
         <form id="profile-form" class="profile-layout">
-          <section class="profile-card"><div class="profile-card-heading"><div><h2>The basics</h2><p>Your maximum price applies to the style quiz and Discover recommendations.</p></div><span class="profile-section-number">01</span></div>
+          <section class="profile-card"><div class="profile-card-heading"><div><h2>The basics</h2><p>This saves your budget preference. It does not filter individual outfits yet because styleTV does not import WornOnTV price or availability records.</p></div><span class="profile-section-number">01</span></div>
             <div class="form-grid"><div class="form-field"><label for="display-name">What should we call you?</label><input id="display-name" name="displayName" type="text" maxlength="60" value="Demo stylist"></div><div class="form-field"><label for="budget">Budget per item (USD)</label><select id="budget" name="budget"><option value="25">Up to $25</option><option value="40">Up to $40</option><option value="50">Up to $50</option><option value="60">Up to $60</option><option value="75">Up to $75</option><option value="80" selected>Up to $80</option><option value="100">Up to $100</option><option value="125">Up to $125</option><option value="150">Up to $150</option><option value="200">Up to $200</option><option value="250">Up to $250</option><option value="300">Up to $300</option><option value="any">No fixed budget</option></select></div><div class="form-field"><label for="boldness">How bold do you want to go?</label><select id="boldness" name="boldness"><option value="subtle">Subtle</option><option value="medium" selected>A bit of a statement</option><option value="bold">Bold and experimental</option></select></div><div class="form-field"><label for="fit-notes">Anything else we should know?</label><input id="fit-notes" name="notes" type="text" placeholder="e.g. layers well, no skinny jeans" maxlength="300"></div></div>
           </section>
           <section class="profile-card"><div class="profile-card-heading"><div><h2>Style influences</h2><p>Choose the directions you want to explore.</p></div><span class="profile-section-number">02</span></div><div class="choice-group" id="style-tag-choices" aria-label="Style influences"></div></section>
-          <section class="profile-card"><div class="profile-card-heading"><div><h2>Patterns and colours</h2><p>These help shape recommendations, but you can always branch out.</p></div><span class="profile-section-number">03</span></div><h3 class="choice-subheading">Patterns</h3><div class="choice-group" id="pattern-choices" aria-label="Pattern preferences"></div><h3 class="choice-subheading">Colours you gravitate toward</h3><div class="choice-group" id="color-choices" aria-label="Colour preferences"></div></section>
+          <section class="profile-card"><div class="profile-card-heading"><div><h2>Patterns and colours</h2><p>These help rank daytime programmes; actual outfit records remain on WornOnTV.</p></div><span class="profile-section-number">03</span></div><h3 class="choice-subheading">Patterns</h3><div class="choice-group" id="pattern-choices" aria-label="Pattern preferences"></div><h3 class="choice-subheading">Colours you gravitate toward</h3><div class="choice-group" id="color-choices" aria-label="Colour preferences"></div></section>
           <section class="profile-card"><div class="profile-card-heading"><div><h2>Optional colour analysis</h2><p>Use YouCam facial colour-tone analysis for extra colour inspiration. This is not skin-type classification and does not determine which styles you can wear.</p></div><span class="profile-section-number">04</span></div>
             <div class="colour-analysis-layout"><div class="colour-analysis-copy"><label class="upload-label" for="color-photo">Choose a front-facing selfie (JPG or PNG)</label><input id="color-photo" type="file" accept="image/jpeg,image/png"><label class="consent-line"><input id="color-consent" type="checkbox"><span>I consent to sending this photo to YouCam for colour-tone analysis.</span></label><button class="button button-outline" id="run-color-analysis" type="button">Analyze my colour tones</button><p class="small-note">Optional. A clear, front-facing photo with one person works best. You can use styleTV without colour analysis.</p></div><div id="color-result" class="color-result" aria-live="polite"><div class="empty-analysis"><span aria-hidden="true">◌</span><strong>Your colour notes will appear here</strong><p>Use these results as inspiration, not rules.</p></div></div></div>
           </section>
@@ -92,16 +93,16 @@
       </section>
 
       <section class="app-view" id="view-saved" data-view-panel="saved" hidden>
-        <div class="welcome-row"><div><h1>Saved looks.</h1><p class="page-lede">Keep ideas for later and come back when you're ready to try them on or shop similar pieces.</p></div><button class="button button-outline" data-go-view="discover">Discover more looks</button></div>
-        <div id="saved-product-grid" class="product-grid"></div>
-        <div id="saved-empty" class="empty-state" hidden><span class="empty-state-icon" aria-hidden="true">♡</span><h2>Your collection starts here.</h2><p>Save a look from Discover to keep it in this browser.</p><button class="button button-primary" data-go-view="discover">Explore looks</button></div>
+        <div class="welcome-row"><div><h1>Saved wardrobes.</h1><p class="page-lede">Your favourite daytime programmes stay here, with direct links to their documented outfits.</p></div><button class="button button-outline" data-go-view="shows">Find more shows</button></div>
+        <div id="saved-wardrobe-grid" class="show-grid"></div>
+        <div id="saved-empty" class="empty-state" hidden><span class="empty-state-icon" aria-hidden="true">♡</span><h2>No saved wardrobes yet.</h2><p>Add a daytime show to My shows to keep its wardrobe link here.</p><button class="button button-primary" data-go-view="shows">Find daytime shows</button></div>
       </section>
     </main>
   </div>
 
   <dialog id="try-on-dialog" class="try-on-dialog" aria-labelledby="try-on-title">
     <div class="dialog-header"><div><h2 id="try-on-title">Try this look on.</h2></div><button class="dialog-close" type="button" aria-label="Close virtual try-on">×</button></div>
-    <div class="dialog-content"><div id="try-on-product" class="try-on-product"></div><form id="try-on-form"><label class="upload-label" for="try-on-photo">Upload a high-resolution, front-facing full-body photo (JPG or PNG)</label><input id="try-on-photo" type="file" accept="image/jpeg,image/png" required><div class="photo-guidance"><strong>For a better result</strong><p>Use a clear, well-lit, front-facing photo showing the full body, with one person and a simple background. Keep the body unobstructed. This follows YouCam Clothes V4’s integration guidance; check the account Playground if a specific garment category requires different framing.</p></div><label class="consent-line"><input id="try-on-consent" type="checkbox" required><span>I consent to sending this photo and the selected garment reference to YouCam for virtual try-on processing.</span></label><button class="button button-primary button-large button-full" type="submit">Generate my preview <span aria-hidden="true">→</span></button><p class="small-note">Your photo is sent to YouCam under its service retention terms and is not stored by styleTV. The result is a visual preview, not a sizing or fit guarantee.</p></form><div id="try-on-status" class="try-on-status" aria-live="polite" hidden></div><div id="try-on-result" class="try-on-result" hidden></div></div>
+    <div class="dialog-content"><div id="try-on-product" class="try-on-product"></div><form id="try-on-form"><label class="upload-label" for="try-on-photo">1. Your photo (JPG or PNG)</label><input id="try-on-photo" type="file" accept="image/jpeg,image/png" required><div class="photo-guidance"><strong>Use a clear photo</strong><p>Use a well-lit, front-facing photo with one person, face visible, and shoulders / upper body in frame. Avoid group photos, obstructed clothing, and busy backgrounds.</p></div><label class="upload-label" for="try-on-reference-photo">2. The actual outfit reference image (JPG or PNG)</label><input id="try-on-reference-photo" type="file" accept="image/jpeg,image/png" required><div class="photo-guidance"><strong>Use the outfit you selected</strong><p>Use an outfit-reference image that you own or have permission to submit to an AI service. WornOnTV links let you inspect the documented outfit; do not copy or upload its material unless you have permission under the source terms.</p></div><label class="consent-line"><input id="try-on-consent" type="checkbox" required><span>I consent to sending both images to YouCam for virtual try-on processing.</span></label><button class="button button-primary button-large button-full" type="submit">Generate preview with YouCam Clothes V4 <span aria-hidden="true">→</span></button><p class="small-note">Both images are uploaded to YouCam only after you submit and consent. styleTV does not store the image files. The result is a visual preview, not a sizing or fit guarantee.</p><p id="try-on-api-note" class="provider-status">Checking YouCam configuration…</p></form><div id="try-on-status" class="try-on-status" aria-live="polite" hidden></div><div id="try-on-result" class="try-on-result" hidden></div></div>
   </dialog>
 
   <dialog id="walkthrough-dialog" class="walkthrough-dialog" aria-labelledby="walkthrough-title" aria-describedby="walkthrough-description">
@@ -113,17 +114,17 @@
       <section class="walkthrough-panel" data-walkthrough-panel="0">
         <p class="walkthrough-eyebrow">Explore shows</p>
         <h3>Start with the shows you love.</h3>
-        <p id="walkthrough-description">Browse daytime soaps, morning shows and talk shows; save favourites to personalize Discover; open WornOnTV to see the actual outfit listings. styleTV’s garment matches are inspiration, not verified on-screen items.</p>
+        <p id="walkthrough-description">Browse daytime soaps, morning shows and talk shows; save favourites to personalize Discover; open WornOnTV to view the documented outfits. styleTV recommends the show wardrobe sources, not unrelated sample garments.</p>
       </section>
       <section class="walkthrough-panel" data-walkthrough-panel="1" hidden>
         <p class="walkthrough-eyebrow">Make it personal</p>
         <h3>Shape recommendations around your taste.</h3>
-        <p>Use the style quiz or edit your profile to set patterns, colours, boldness and a budget. Recommendations update when your preferences or favourite shows change. Facial colour analysis is optional.</p>
+        <p>Use the style quiz or edit your profile to set style directions and favourite shows. Recommendations rank relevant programmes and link to their real wardrobe records; they do not invent outfits.</p>
       </section>
       <section class="walkthrough-panel" data-walkthrough-panel="2" hidden>
         <p class="walkthrough-eyebrow">Preview and shop</p>
         <h3>Try a look before you decide.</h3>
-        <p>Choose a supported garment, upload a photo with your consent, and use YouCam to generate a visual preview. Compare available colour ideas, save looks and follow retailer links for similar items.</p>
+        <p>Open the show’s WornOnTV page to find its documented outfits. For try-on, upload your photo and an outfit-reference image you have permission to process, then use YouCam Clothes V4. YouCam facial colour-tone analysis is a separate optional tool.</p>
       </section>
     </div>
     <div class="walkthrough-actions">
