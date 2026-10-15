@@ -6,11 +6,11 @@
 2. Start the style quiz.
 3. Select at least two style directions, an occasion, a colour palette and a budget.
 4. Submit the quiz.
-5. Confirm the app returns to My edit and displays cards ranked using the answers.
+5. Confirm the app returns to Ensemble and displays cards ranked using the answers.
 
 ## Custom colour scheme
 
-1. On My edit, select My own colour scheme.
+1. On Ensemble, select My own colour scheme.
 2. Enter a few colours such as `olive, cream, rust`.
 3. Apply the scheme.
 4. Confirm results refresh and the palette label/swatch strip reflects the selection.
@@ -26,9 +26,9 @@
 
 ## Recommendation feedback
 
-1. On My edit, use Save on a card.
+1. On Ensemble, use Save on a card.
 2. Open Saved pieces and verify the piece appears.
-3. Return to My edit and select Not for me on a card.
+3. Return to Ensemble and select Not for me on a card.
 4. Confirm the card disappears from the refreshed edit and remains excluded in later requests.
 5. Use Reset hidden feedback if the edit becomes empty.
 

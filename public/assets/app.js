@@ -22,7 +22,7 @@
   const state = {
     db: null, profile: structuredClone(DEFAULT_PROFILE), settings: { theme: 'light', fontSize: 'medium' },
     catalog: { items: [], palettes: [], styles: [], occasions: [] }, config: {},
-    recommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', colorPreviewUrl: null
+    recommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', colorPreviewUrl: null, recommendationsLoading: false
   };
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -180,8 +180,6 @@
     const name = (state.profile.displayName || 'myStyle Member').trim();
     const userName = $('.user-name');
     if (userName) userName.textContent = name;
-    const avatar = $('.user-avatar');
-    if (avatar) avatar.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('');
   }
 
   function seasonForNow() {
@@ -199,7 +197,7 @@
     const climateName = meta.climate_label || ({ cold: 'Cold-weather layers', variable: 'Variable-weather layers', mild: 'Mild-climate dressing', warm: 'Warm-weather pieces' }[state.profile.climate] || 'Season-aware');
     const location = [state.profile.city, state.profile.region, COUNTRY() === 'CA' ? 'Canada' : 'United States'].filter(Boolean).join(', ');
     const heroLabel = $('#hero-season-label');
-    if (heroLabel) heroLabel.textContent = `${seasonName} edit, considered for you`;
+    if (heroLabel) heroLabel.textContent = `${seasonName} recommendations for you`;
     const seasonPill = $('#season-weather-pill');
     if (seasonPill) seasonPill.textContent = `${seasonName} · ${climateName}`;
     const regionCopy = $('#region-season-copy');
@@ -254,7 +252,7 @@
     const tags = [...(item.style_tags || []).slice(0, 3), item.category].map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
     return `<article class="style-card" data-item-card="${escapeHTML(item.id)}">
       <div class="style-card-media" data-image-state="loading"><img data-style-image src="${escapeHTML(item.image_url)}" alt="Editorial inspiration for ${escapeHTML(item.name)}" loading="lazy" decoding="async"><div class="style-image-fallback"><span>myStyle inspiration</span><strong>${escapeHTML(item.name)}</strong></div><span class="style-card-season">${escapeHTML(seasonBadge)}</span><button class="save-style-button" data-save-item="${escapeHTML(item.id)}" type="button" aria-pressed="${String(saved)}" aria-label="${saved ? 'Remove from' : 'Save to'} my saved pieces">${saved ? '♥' : '♡'}</button></div>
-      <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A versatile option for your edit.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div><div class="style-card-actions"><a class="button button-primary" href="${escapeHTML(shop)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a>${`<button class="button button-outline" data-try-on="${escapeHTML(item.id)}" type="button">Try on this style</button>`}${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}</div></div>
+      <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A versatile option for your wardrobe.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div><div class="style-card-actions"><a class="button button-primary" href="${escapeHTML(shop)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a>${`<button class="button button-outline" data-try-on="${escapeHTML(item.id)}" type="button">Try on this style</button>`}${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}</div></div>
     </article>`;
   }
 
@@ -310,7 +308,7 @@
     const target = $('#skin-analysis-preview');
     if (!target) return;
     if (!colors || !Object.keys(colors).length) {
-      target.innerHTML = '<div class="skin-empty-state"><span class="skin-empty-mark">◌</span><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to your edit.</p></div>';
+      target.innerHTML = '<div class="skin-empty-state"><span class="skin-empty-mark">◌</span><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div>';
       $('#skin-insight-banner').hidden = true;
       return;
     }
@@ -318,12 +316,12 @@
     const labels = { skin_color: 'Skin colour', hair_color: 'Hair colour', eye_color: 'Eye colour', eyebrow_color: 'Eyebrow colour', lip_color: 'Lip colour' };
     const detected = order.filter(key => /^#[0-9a-f]{6}$/i.test(colors[key] || '')).map(key => `<div class="analysis-tone"><span style="background:${escapeHTML(colors[key])}"></span><div><strong>${escapeHTML(labels[key])}</strong><small>${escapeHTML(colors[key])}${colors[`${key}_name`] ? ` · ${escapeHTML(colors[`${key}_name`])}` : ''}</small></div></div>`).join('');
     const guide = skinPaletteGuide(colors);
-    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><span class="eyebrow">Y O U C A M · DETECTED COLOUR TONES</span><h3>Colour notes for your edit</h3><p>These are detected facial colour values. Use them as styling inspiration—not as rules about what suits you.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}</div>`;
+    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><span class="eyebrow">Y O U C A M · DETECTED COLOUR TONES</span><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration—not as rules about what suits you.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}</div>`;
     const banner = $('#skin-insight-banner');
     if (banner && guide) {
       banner.hidden = false;
       $('#skin-insight-title').textContent = guide.label;
-      $('#skin-insight-copy').textContent = `Your edit now considers these optional palette cues: ${guide.colors.slice(0, 5).join(', ')}. You can still choose any colour scheme.`;
+      $('#skin-insight-copy').textContent = `Ensemble now considers these optional palette cues: ${guide.colors.slice(0, 5).join(', ')}. You can still choose any colour scheme.`;
     }
   }
 
@@ -376,7 +374,7 @@
       $('#skin-photo').value = '';
       if (state.colorPreviewUrl) URL.revokeObjectURL(state.colorPreviewUrl);
       state.colorPreviewUrl = null;
-      showAlert('Colour analysis complete. The detected colour values have been saved and used to refine your edit.', 'good');
+      showAlert('Colour analysis complete. The detected colour values have been saved and used to refine Ensemble.', 'good');
     } catch (error) {
       showAlert(error.message || 'YouCam could not complete colour analysis.', 'error');
     } finally {
@@ -447,35 +445,47 @@
   }
 
   async function requestRecommendations(query = '') {
+    if (state.recommendationsLoading) return;
+    state.recommendationsLoading = true;
     const id = ++state.requestId;
     state.lastQuery = query;
     const status = $('#recommendation-status');
-    if (status) status.textContent = 'Curating pieces around your profile…';
+    if (status) status.textContent = 'Loading recommendations…';
     const grid = $('#recommendation-grid');
-    if (grid && !grid.children.length) grid.innerHTML = '<div class="loading-style-card"><span class="loading-spinner"></span><strong>Building your edit</strong><p>Matching colours, season, budget and lifestyle.</p></div>';
+    if (grid) {
+      grid.setAttribute('aria-busy', 'true');
+      if (!grid.children.length) grid.innerHTML = '<div class="loading-style-card"><span class="loading-spinner"></span><strong>Loading recommendations</strong><p>Matching your style, colours, season and budget.</p></div>';
+    }
+    const triggers = [$('#refresh-edit'), $('#style-search-form button[type="submit"]'), $('#clear-style-search'), $('#quick-palette-form button[type="submit"]'), $('#quiz-form button[type="submit"]'), $('#profile-form button[type="submit"]'), $('#save-profile-top')].filter(Boolean);
+    const originalLabels = new Map();
+    triggers.forEach(button => {
+      originalLabels.set(button, button.innerHTML);
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      if (button.id === 'refresh-edit') button.textContent = 'Loading recommendations…';
+      else if (button.type === 'submit') button.textContent = 'Please wait…';
+    });
     try {
       const result = await apiFetch('/api/recommendations', { method: 'POST', body: JSON.stringify({ profile: state.profile, query, limit: 8 }) });
       if (id !== state.requestId) return;
       state.recommendations = result.recommendations || [];
       updateSeasonDetails(result);
-      const summary = $('#edit-summary');
-      if (summary) summary.textContent = `${result.count} style concepts selected for ${result.season_label.toLowerCase()} · ${result.climate_label.toLowerCase()} · ${result.currency}`;
-      if (status) status.textContent = state.recommendations.length ? `${state.recommendations.length} pieces in your edit` : 'No matches found';
-      const source = $('#recommendation-source');
-      if (source) source.textContent = state.profile.colorScheme === 'selfie' && !state.profile.skinAnalysis
-        ? 'You selected skin-guided colour ideas. Run the optional colour analysis in Style profile to personalize this signal; no selfie has been uploaded.'
-        : result.ai_status === 'used'
-          ? `Gemini ranking used (${result.model}). All results remain from the known style catalogue.`
-          : result.ai_status === 'fallback'
-            ? 'Using the profile-based matcher because Gemini was not available for this request.'
-            : 'Ranked by your style profile, palette, season, climate, budget, fit preference and feedback.';
+      if (status) status.textContent = state.recommendations.length ? `${state.recommendations.length} recommendations` : 'No matches found';
       renderRecommendations(state.recommendations);
       renderSaved();
       renderSkinAnalysis(state.profile.skinAnalysis);
     } catch (error) {
       if (id !== state.requestId) return;
-      if (status) status.textContent = 'Could not update your edit';
-      if (grid) grid.innerHTML = `<div class="no-results"><strong>We couldn't build your edit.</strong><p>${escapeHTML(error.message)}</p><button class="button button-outline" type="button" id="retry-edit">Try again</button></div>`;
+      if (status) status.textContent = 'Could not load recommendations';
+      if (grid) grid.innerHTML = `<div class="no-results"><strong>We couldn't load recommendations.</strong><p>${escapeHTML(error.message)}</p><button class="button button-outline" type="button" id="retry-edit">Try again</button></div>`;
+    } finally {
+      state.recommendationsLoading = false;
+      if (grid) grid.removeAttribute('aria-busy');
+      triggers.forEach(button => {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        if (originalLabels.has(button)) button.innerHTML = originalLabels.get(button);
+      });
     }
   }
 
@@ -487,7 +497,8 @@
       panel.hidden = !active;
     });
     $$('.side-nav-link[data-view]').forEach(button => button.classList.toggle('is-active', button.dataset.view === view));
-    if (view === 'profile') { renderProfileChoices(); renderSkinAnalysis(state.profile.skinAnalysis); }
+    if (view === 'profile') { renderProfileChoices(); }
+    if (view === 'skin-analysis') renderSkinAnalysis(state.profile.skinAnalysis);
     if (view === 'saved') renderSaved();
     if (view === 'discover') renderSaved();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -518,7 +529,7 @@
       updateUserIdentity(); renderProfileChoices(); updateSeasonDetails();
       const saveStatus = $('#profile-save-status');
       if (saveStatus) saveStatus.textContent = 'Your profile has been saved.';
-      showAlert('Style profile updated. Your edit is being refreshed.', 'good');
+      showAlert('Style profile updated. Recommendations are being refreshed.', 'good');
       await requestRecommendations(state.lastQuery);
     } catch (error) { showAlert(`Could not save your profile: ${error.message}`, 'error'); }
   }
@@ -535,7 +546,7 @@
       await persistProfile();
       renderProfileChoices();
       await requestRecommendations('');
-      showAlert('Your style quiz is saved. Your seasonal edit has been updated.', 'good');
+      showAlert('Your style quiz is saved. Ensemble recommendations have been updated.', 'good');
       switchView('discover');
     } catch (error) { showAlert(`Could not save quiz answers: ${error.message}`, 'error'); }
   }
@@ -548,7 +559,7 @@
       await persistProfile();
       renderPaletteSelect(); updateSeasonDetails();
       await requestRecommendations(state.lastQuery);
-      showAlert('Colour scheme applied to your edit.', 'good');
+      showAlert('Colour scheme applied to Ensemble.', 'good');
     } catch (error) { showAlert(`Could not apply the colour scheme: ${error.message}`, 'error'); }
   }
 
@@ -569,7 +580,7 @@
     state.profile.savedItemIds = (state.profile.savedItemIds || []).filter(id => id !== itemId);
     try {
       await persistProfile();
-      showAlert('Got it. This piece will be left out of future edits.', 'good');
+      showAlert('Got it. This piece will be excluded from future recommendations.', 'good');
       await requestRecommendations(state.lastQuery);
     } catch (error) { showAlert(`Could not save your feedback: ${error.message}`, 'error'); }
   }
@@ -583,7 +594,7 @@
   function attachEvents() {
     document.addEventListener('click', async event => {
       const viewButton = event.target.closest('[data-view]');
-      if (viewButton) { switchView(viewButton.dataset.view); const targetId = viewButton.dataset.scrollTo; if (targetId) window.setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); return; }
+      if (viewButton) { if (viewButton.hasAttribute('data-close-walkthrough')) $('#how-it-works-dialog')?.close(); switchView(viewButton.dataset.view); return; }
       const tryOnButton = event.target.closest('[data-try-on]');
       if (tryOnButton) { openTryOn(tryOnButton.dataset.tryOn); return; }
       const saveButton = event.target.closest('[data-save-item]');
@@ -601,6 +612,7 @@
     $('#quick-palette-form')?.addEventListener('submit', applyQuickPalette);
     $('#profile-country')?.addEventListener('change', () => { renderBudgetOptions(); });
     $('#refresh-edit')?.addEventListener('click', () => requestRecommendations(state.lastQuery));
+    $('#how-it-works-open')?.addEventListener('click', () => $('#how-it-works-dialog')?.showModal());
     $('#style-search-form')?.addEventListener('submit', event => { event.preventDefault(); requestRecommendations($('#style-search')?.value.trim() || ''); });
     $('#clear-style-search')?.addEventListener('click', () => { $('#style-search').value = ''; requestRecommendations(''); });
     $('#skin-photo')?.addEventListener('change', setSkinPhotoPreview);

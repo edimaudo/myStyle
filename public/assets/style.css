@@ -175,7 +175,6 @@ html[data-theme="dark"] .font-control button[aria-pressed="true"] { color: #1021
 .icon-control { min-height: 40px; border: 1px solid var(--line); background: var(--surface); padding: 7px 11px; border-radius: 11px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 8px; font-size: .83rem; font-weight: 700; }
 .icon-control span:first-child { font-size: 1.2rem; }
 .user-menu { display: flex; align-items: center; gap: 9px; }
-.user-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--blue-soft); color: var(--blue-ink); display: grid; place-items: center; font-size: .76rem; font-weight: 800; }
 .user-name { color: var(--ink-soft); font-size: .88rem; font-weight: 700; white-space: nowrap; }
 .user-menu form { margin: 0; }
 .signout-button { border: 0; padding: 7px 9px; background: transparent; color: var(--blue-ink); font-weight: 700; font-size: .85rem; }
@@ -410,7 +409,6 @@ input[type="file"]::file-selector-button { border: 1px solid var(--line); border
   .font-control button { width: 28px; height: 29px; }
   .icon-control { padding: 7px 9px; min-height: 37px; }
   .theme-label { display: none; }
-  .user-avatar { width: 30px; height: 30px; }
   .signout-button { font-size: .78rem; padding: 5px; }
   .app-main { padding: 25px 14px 40px; }
   .welcome-row { display: block; }
@@ -859,3 +857,26 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
 .sidebar-season-card { margin-top: 12px; }
 .style-card-actions [data-try-on] { background: var(--surface); border-color: var(--ink); color: var(--ink); }
 .style-card-actions [data-try-on]:hover { background: var(--surface-muted); }
+
+/* Ensemble navigation and focused recommendation-first layout */
+.mystyle-sidebar .side-nav-link { gap: 0; }
+.mystyle-sidebar .side-nav-link > span[aria-hidden="true"] { display: none !important; }
+.ensemble-heading-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.mystyle-section-heading { margin-top: 8px; margin-bottom: 22px; }
+.mystyle-section-heading h1 { margin: 0 0 7px; font-size: clamp(1.8rem, 3vw, 2.5rem); }
+.mystyle-section-heading p { margin: 0; }
+#recommendation-grid[aria-busy="true"] { opacity: .68; pointer-events: none; transition: opacity .15s ease; }
+#refresh-edit[disabled], #style-search-form button[disabled], #quick-palette-form button[disabled], #quiz-form button[disabled], #profile-form button[disabled], #save-profile-top[disabled] { cursor: wait; opacity: .72; }
+.how-it-works-dialog { width: min(560px, calc(100% - 28px)); max-height: min(84vh, 720px); padding: 0; border: 1px solid var(--line); border-radius: 16px; color: var(--ink); background: var(--surface); box-shadow: 0 24px 80px rgb(0 0 0 / 22%); }
+.how-it-works-dialog::backdrop { background: rgb(15 23 42 / 48%); }
+.how-it-works-dialog .dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 24px 26px 18px; border-bottom: 1px solid var(--line); }
+.how-it-works-dialog .dialog-header h2 { margin: 0 0 5px; font-size: 1.3rem; }
+.how-it-works-dialog .dialog-header p { margin: 0; color: var(--ink-soft); font-size: .9rem; }
+.walkthrough-steps { display: grid; gap: 0; margin: 0; padding: 4px 26px; list-style: none; counter-reset: walkthrough; }
+.walkthrough-steps li { position: relative; padding: 17px 0 17px 42px; border-bottom: 1px solid var(--line); counter-increment: walkthrough; }
+.walkthrough-steps li:last-child { border-bottom: 0; }
+.walkthrough-steps li::before { content: counter(walkthrough); position: absolute; left: 0; top: 17px; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; font-size: .8rem; font-weight: 700; }
+.walkthrough-steps strong { display: block; margin-bottom: 4px; }
+.walkthrough-steps p { margin: 0; color: var(--ink-soft); font-size: .88rem; line-height: 1.55; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 26px 24px; }
+@media (max-width: 640px) { .ensemble-heading-actions { width: 100%; } .ensemble-heading-actions .button { flex: 1 1 auto; } .how-it-works-dialog .dialog-header, .walkthrough-steps, .dialog-actions { padding-left: 18px; padding-right: 18px; } }

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <meta name="description" content="myStyle creates a personal, seasonal clothing edit around your style preferences, colour palette and budget.">
-  <title>myStyle — Your personal style edit</title>
+  <meta name="description" content="myStyle helps you discover clothing recommendations in Ensemble, matched to your style, colour palette, season and budget.">
+  <title>myStyle — Personal styling</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
@@ -20,28 +20,27 @@
       <a class="brand" href="/" aria-label="myStyle home"><span class="brand-mark mystyle-brand-mark">m<span>y</span></span><span>myStyle</span></a>
       
       <nav class="side-nav" aria-label="Main navigation">
-        <button class="side-nav-link is-active" data-view="discover" type="button"><span aria-hidden="true">✳</span> My edit</button>
-        <button class="side-nav-link" data-view="quiz" type="button"><span aria-hidden="true">◈</span> Style quiz</button>
-        <button class="side-nav-link" data-view="profile" type="button"><span aria-hidden="true">◉</span> Style profile</button>
-        <button class="side-nav-link" data-view="profile" data-scroll-to="skin-analysis-card" type="button"><span aria-hidden="true">◎</span> Skin analysis</button>
-        <button class="side-nav-link" data-view="saved" type="button"><span aria-hidden="true">♡</span> Saved pieces <span class="nav-count" id="saved-count">0</span></button>
+        <button class="side-nav-link is-active" data-view="discover" type="button">Ensemble</button>
+        <button class="side-nav-link" data-view="quiz" type="button">Style quiz</button>
+        <button class="side-nav-link" data-view="profile" type="button">Style profile</button>
+        <button class="side-nav-link" data-view="skin-analysis" type="button">Skin analysis</button>
+        <button class="side-nav-link" data-view="saved" type="button">Saved pieces <span class="nav-count" id="saved-count">0</span></button>
       </nav>
-      <section class="sidebar-walkthrough" aria-label="App walkthrough"><h2>How to use myStyle</h2><button type="button" data-view="quiz">Find your style <span aria-hidden="true">→</span></button><button type="button" data-view="profile">Set colours and season <span aria-hidden="true">→</span></button><button type="button" data-view="profile" data-scroll-to="skin-analysis-card">Analyse skin tone <span aria-hidden="true">→</span></button><button type="button" data-view="discover">Explore clothing ideas <span aria-hidden="true">→</span></button><button type="button" data-view="saved">Save favourites <span aria-hidden="true">→</span></button></section>
       <div class="sidebar-season-card">
         <span class="eyebrow">YOUR SEASON</span>
-        <strong id="sidebar-season">Seasonal edit</strong>
+        <strong id="sidebar-season">Current season</strong>
         <p id="sidebar-season-note">Pieces matched to your style and the weather you expect.</p>
-        <button class="text-link" data-view="profile" type="button">Adjust season ↗</button>
+        <button class="text-link" data-view="profile" type="button">Adjust season</button>
       </div>
       <div class="sidebar-bottom">
-        <div class="user-chip"><span class="user-avatar">M</span><span><strong class="user-name">myStyle Member</strong><small>Personal style profile</small></span></div>
+        <div class="user-chip"><span><strong class="user-name">myStyle Member</strong><small>Style profile</small></span></div>
         <a class="side-signout" href="/signout">Sign out</a>
       </div>
     </aside>
 
     <main id="main" class="app-main mystyle-main">
       <header class="app-topbar mystyle-topbar">
-        <div><h1 class="topbar-title">my Style</h1><p class="topbar-subtitle">Clothing ideas matched to your preferences.</p></div>
+        <div><h1 class="topbar-title">myStyle</h1></div>
         <div class="app-topbar-controls">
           <div class="site-display-controls" aria-label="Display settings">
             <div class="font-control" role="group" aria-label="Text size"><span>Text</span><button type="button" data-font="small" aria-label="Small text" aria-pressed="false">A</button><button type="button" data-font="medium" aria-label="Medium text" aria-pressed="true">A</button><button type="button" data-font="large" aria-label="Large text" aria-pressed="false">A</button></div>
@@ -52,49 +51,28 @@
       <div id="app-alert" class="app-alert" role="status" aria-live="polite" tabindex="-1" hidden></div>
 
       <section class="app-view is-active" id="view-discover" data-view-panel="discover">
-        <section class="mystyle-hero">
-          <div class="mystyle-hero-copy">
-            <span class="hero-season-label" id="hero-season-label">A seasonal selection for you</span>
-            <h1>Get dressed like <em>yourself.</em></h1>
-            <p class="page-lede">A thoughtful edit of pieces shaped around your taste, colour direction, day-to-day life and local season.</p>
-            <div class="hero-actions">
-              <button class="button button-primary button-large" data-view="quiz" type="button">Take the style quiz <span aria-hidden="true">→</span></button>
-              <button class="button button-outline button-large" data-view="profile" type="button">Choose my colours</button>
-            </div>
-            <div class="season-meta"><span id="season-weather-pill" class="season-weather-pill">Season-aware</span><span id="region-season-copy">Personalised for Canada and the US</span></div>
-          </div>
-          <div class="mystyle-hero-visual" aria-label="Seasonal fashion inspiration">
-            <div class="hero-fashion-image hero-fashion-tall"><img src="https://images.unsplash.com/photo-1539533018447-63fcce2678e3?auto=format&fit=crop&w=900&q=85" alt="Neutral outerwear styling inspiration" fetchpriority="high"><span>Layer with intention</span></div>
-            <div class="hero-fashion-stack"><div class="hero-fashion-image"><img src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=800&q=85" alt="Contemporary everyday fashion inspiration" loading="lazy"></div><div class="hero-palette-card"><div id="hero-palette-swatches" class="hero-palette-swatches"><i></i><i></i><i></i><i></i><i></i></div><p id="hero-palette-label">Your palette, your rules</p></div></div>
-          </div>
-        </section>
 
-        <section class="quick-palette-panel" aria-labelledby="quick-palette-title">
-          <div class="quick-palette-copy"><h2 id="quick-palette-title">Have a colour scheme in mind?</h2><p>Choose a direction or enter your own colours. Your edit will update to match.</p></div>
-          <form id="quick-palette-form" class="quick-palette-form"><label for="quick-color-scheme">Colour direction</label><select id="quick-color-scheme" name="colorScheme"></select><label for="quick-custom-colors">Your colours <span class="optional-label">optional</span></label><input id="quick-custom-colors" type="text" maxlength="180" placeholder="e.g. olive, cream, rust"><button class="button button-primary" type="submit">Apply colour scheme</button></form>
-        </section>
-
-        <div class="section-heading-row mystyle-section-heading"><div><h2>Clothing ideas for you</h2><p id="edit-summary">Recommendations based on your style, colours and season.</p></div><button class="button button-outline" id="refresh-edit" type="button">Refresh recommendations <span aria-hidden="true">↻</span></button></div>
+        <div class="section-heading-row mystyle-section-heading"><div><h1>Ensemble</h1></div><div class="ensemble-heading-actions"><button class="button button-outline" id="how-it-works-open" type="button">How it works</button><button class="button button-primary" id="refresh-edit" type="button">Refresh recommendations</button></div></div>
         <form id="style-search-form" class="search-panel mystyle-search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="style-search">Search the style catalogue</label><input id="style-search" name="query" type="search" placeholder="Search for linen, tailoring, workwear, colour…" autocomplete="off"><button class="button button-outline" type="submit">Search styles</button><button class="text-link" type="button" id="clear-style-search">Clear</button></form>
-        <div class="recommendation-meta"><p id="recommendation-status" aria-live="polite">Building your edit…</p><p id="recommendation-source" class="small-note" aria-live="polite"></p></div>
+        <div class="recommendation-meta"><p id="recommendation-status" aria-live="polite">Loading recommendations…</p></div>
         <div id="recommendation-grid" class="style-grid" aria-live="polite"></div>
 
-        <section class="skin-insight-banner" id="skin-insight-banner" hidden><div class="skin-insight-mark">✳</div><div><span class="eyebrow">COLOUR NOTES</span><h2 id="skin-insight-title">Your colour analysis</h2><p id="skin-insight-copy"></p></div><button class="button button-outline" type="button" data-view="profile">Review analysis</button></section>
+        <section class="skin-insight-banner" id="skin-insight-banner" hidden><div class="skin-insight-mark">✳</div><div><span class="eyebrow">COLOUR NOTES</span><h2 id="skin-insight-title">Your colour analysis</h2><p id="skin-insight-copy"></p></div><button class="button button-outline" type="button" data-view="skin-analysis">Review analysis</button></section>
       </section>
 
       <section class="app-view" id="view-quiz" data-view-panel="quiz" hidden>
-        <div class="welcome-row"><div><h1>Build your style profile.</h1><p class="page-lede">Choose the style cues that feel right. This is a starting point—not a set of rules.</p></div></div>
+        <div class="welcome-row"><div><h1>Build your style profile.</h1><p class="page-lede">Choose the style cues that feel right. Ensemble uses these to rank clothing recommendations.</p></div></div>
         <form id="quiz-form" class="profile-layout quiz-layout">
           <section class="profile-card"><div class="profile-card-heading"><div><h2>What feels most like you?</h2><p>Choose a few aesthetics you would actually wear.</p></div></div><div id="quiz-style-choices" class="choice-group"></div></section>
           <section class="profile-card"><div class="profile-card-heading"><div><h2>Where do you want these clothes to work?</h2><p>Select the parts of your life your wardrobe needs to support.</p></div></div><div id="quiz-occasion-choices" class="choice-group"></div></section>
-          <section class="profile-card"><div class="profile-card-heading"><div><h2>Which colour story would you reach for?</h2><p>Choose a palette now, or select the selfie-guided option and run colour analysis from your profile.</p></div></div><div id="quiz-palette-choices" class="choice-group"></div><div class="form-field quiz-custom-colours-field"><label for="quiz-custom-colors">Your own colours <span class="optional-label">optional</span></label><input id="quiz-custom-colors" type="text" maxlength="180" placeholder="e.g. navy, cream, burgundy"></div></section>
+          <section class="profile-card"><div class="profile-card-heading"><div><h2>Which colour story would you reach for?</h2><p>Choose a palette now, or select the selfie-guided option and run colour analysis from Skin analysis.</p></div></div><div id="quiz-palette-choices" class="choice-group"></div><div class="form-field quiz-custom-colours-field"><label for="quiz-custom-colors">Your own colours <span class="optional-label">optional</span></label><input id="quiz-custom-colors" type="text" maxlength="180" placeholder="e.g. navy, cream, burgundy"></div></section>
           <section class="profile-card"><div class="profile-card-heading"><div><h2>What is your target per piece?</h2><p>Set a target for the clothing ideas you want to see.</p></div></div><div class="form-field budget-field"><label for="quiz-budget">Maximum budget per item</label><select id="quiz-budget" required></select></div></section>
           <div class="profile-actions"><p>You can edit your style profile at any time.</p><button type="submit" class="button button-primary button-large">Show my style recommendations <span aria-hidden="true">→</span></button></div>
         </form>
       </section>
 
       <section class="app-view" id="view-profile" data-view-panel="profile" hidden>
-        <div class="welcome-row"><div><h1>Your style profile.</h1><p class="page-lede">Set your region, fit, palette and budget. myStyle uses these preferences to rank seasonal clothing inspiration.</p></div><button class="button button-primary" id="save-profile-top" type="button">Save changes</button></div>
+        <div class="welcome-row"><div><h1>Your style profile.</h1><p class="page-lede">Set your region, fit, palette and budget. Ensemble uses these preferences to rank seasonal clothing inspiration.</p></div><button class="button button-primary" id="save-profile-top" type="button">Save changes</button></div>
         <form id="profile-form" class="profile-layout">
           <section class="profile-card"><div class="profile-card-heading"><div><h2>Where and when you dress</h2><p>Season recommendations are based on the current North American season unless you choose one manually. Climate is a practical styling preference, not a live weather forecast.</p></div></div>
             <div class="form-grid">
@@ -112,23 +90,33 @@
               <div class="form-field"><label for="fit-notes">Fit notes <span class="optional-label">optional</span></label><input id="fit-notes" name="notes" type="text" maxlength="300" placeholder="e.g. prefer layers, petite lengths, no wool"></div>
             </div>
           </section>
-          <section class="profile-card"><div class="profile-card-heading"><div><h2>Your style directions</h2><p>These guide the silhouette, categories and styling references shown in your edit.</p></div></div><div id="profile-style-choices" class="choice-group"></div><h3 class="choice-subheading">Where you wear your clothes</h3><div id="profile-occasion-choices" class="choice-group"></div></section>
-          <section class="profile-card"><div class="profile-card-heading"><div><h2>Your colour scheme</h2><p>Choose a ready-made palette, or enter specific colours. Skin analysis is optional and never restricts what you can wear.</p></div></div><div id="profile-palette-choices" class="choice-group"></div><div class="form-grid palette-notes-grid"><div class="form-field"><label for="profile-custom-colors">Custom colour scheme</label><input id="profile-custom-colors" type="text" maxlength="180" placeholder="e.g. olive, soft white, rust, denim"></div><div class="form-field"><label for="profile-colour-notes">Additional preferences <span class="optional-label">optional</span></label><input id="profile-colour-notes" type="text" maxlength="300" placeholder="e.g. more colour, fewer prints, no pastels"></div></div></section>
-          <section class="profile-card skin-analysis-card" id="skin-analysis-card"><div class="profile-card-heading"><div><h2>Skin and facial colour analysis</h2><p>Use a selfie to identify colour tones that can inform your clothing palette.</p></div></div>
-            <div class="skin-analysis-layout"><div class="skin-analysis-controls"><label class="upload-label" for="skin-photo">Choose a front-facing selfie (JPG or PNG)</label><input id="skin-photo" type="file" accept="image/jpeg,image/png" aria-describedby="skin-photo-help"><div class="photo-guidance" id="skin-photo-help"><strong>For useful colour detection</strong><p>Use a clear, front-facing photo with one person, even daylight, and minimal coloured lighting. This image is used only for facial colour-tone analysis.</p></div><label class="consent-line skin-consent"><input id="skin-consent" type="checkbox"><span>I consent to sending this selfie to YouCam for facial colour-tone analysis. <span class="required-marker" aria-hidden="true">*</span><span class="sr-only">Required to analyze the image</span></span></label><button class="button button-outline" id="run-skin-analysis" type="button">Analyze my colours</button><p class="small-note">Your selfie is sent to YouCam only after you give consent and start analysis.</p></div><div id="skin-analysis-preview" class="skin-analysis-preview" aria-live="polite"><div class="skin-empty-state"><span class="skin-empty-mark">◌</span><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to your edit.</p></div></div></div>
-          </section>
-          <div class="profile-actions"><p id="profile-save-status" role="status" aria-live="polite"></p><button type="submit" class="button button-primary button-large">Save my style profile <span aria-hidden="true">→</span></button></div>
+          <section class="profile-card"><div class="profile-card-heading"><div><h2>Your style directions</h2><p>These guide the silhouette, categories and styling references shown in Ensemble.</p></div></div><div id="profile-style-choices" class="choice-group"></div><h3 class="choice-subheading">Where you wear your clothes</h3><div id="profile-occasion-choices" class="choice-group"></div></section>
+          <section class="profile-card"><div class="profile-card-heading"><div><h2>Your colour scheme</h2><p>Choose a ready-made palette, or enter specific colours. Skin analysis is optional and never restricts what you can wear.</p></div></div><div id="profile-palette-choices" class="choice-group"></div><div class="form-grid palette-notes-grid"><div class="form-field"><label for="profile-custom-colors">Custom colour scheme</label><input id="profile-custom-colors" type="text" maxlength="180" placeholder="e.g. olive, soft white, rust, denim"></div><div class="form-field"><label for="profile-colour-notes">Additional preferences <span class="optional-label">optional</span></label><input id="profile-colour-notes" type="text" maxlength="300" placeholder="e.g. more colour, fewer prints, no pastels"></div></div></section><div class="profile-actions"><p id="profile-save-status" role="status" aria-live="polite"></p><button type="submit" class="button button-primary button-large">Save my style profile <span aria-hidden="true">→</span></button></div>
         </form>
       </section>
 
+
+      <section class="app-view" id="view-skin-analysis" data-view-panel="skin-analysis" hidden>
+        <div class="welcome-row"><div><h1>Skin analysis</h1><p class="page-lede">Optional facial colour-tone analysis can inform your clothing palette.</p></div><button class="button button-outline" data-view="profile" type="button">Style profile</button></div>
+        <section class="profile-card skin-analysis-card" id="skin-analysis-card"><div class="profile-card-heading"><div><h2>Skin and facial colour analysis</h2><p>Use a selfie to identify colour tones that can inform your clothing palette.</p></div></div>
+            <div class="skin-analysis-layout"><div class="skin-analysis-controls"><label class="upload-label" for="skin-photo">Choose a front-facing selfie (JPG or PNG)</label><input id="skin-photo" type="file" accept="image/jpeg,image/png" aria-describedby="skin-photo-help"><div class="photo-guidance" id="skin-photo-help"><strong>For useful colour detection</strong><p>Use a clear, front-facing photo with one person, even daylight, and minimal coloured lighting. This image is used only for facial colour-tone analysis.</p></div><label class="consent-line skin-consent"><input id="skin-consent" type="checkbox"><span>I consent to sending this selfie to YouCam for facial colour-tone analysis. <span class="required-marker" aria-hidden="true">*</span><span class="sr-only">Required to analyze the image</span></span></label><button class="button button-outline" id="run-skin-analysis" type="button">Analyze my colours</button><p class="small-note">Your selfie is sent to YouCam only after you give consent and start analysis.</p></div><div id="skin-analysis-preview" class="skin-analysis-preview" aria-live="polite"><div class="skin-empty-state"><span class="skin-empty-mark">◌</span><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div></div></div>
+          </section>
+      </section>
+
       <section class="app-view" id="view-saved" data-view-panel="saved" hidden>
-        <div class="welcome-row"><div><h1>Pieces worth keeping.</h1><p class="page-lede">Save the ideas you want to explore later. Shop links search for similar items in your selected country.</p></div><button class="button button-outline" data-view="discover" type="button">Back to my Style</button></div>
+        <div class="welcome-row"><div><h1>Pieces worth keeping.</h1><p class="page-lede">Save the ideas you want to explore later. Shop links search for similar items in your selected country.</p></div><button class="button button-outline" data-view="discover" type="button">Back to Ensemble</button></div>
         <div id="saved-grid" class="style-grid"></div>
-        <div id="saved-empty" class="empty-state" hidden><div class="skin-empty-mark">♡</div><h2>Your shortlist is empty.</h2><p>Save any piece from your edit to keep it here.</p><button class="button button-primary" data-view="discover" type="button">Explore my Style</button></div>
+        <div id="saved-empty" class="empty-state" hidden><div class="skin-empty-mark">♡</div><h2>Your shortlist is empty.</h2><p>Save any piece from Ensemble to keep it here.</p><button class="button button-primary" data-view="discover" type="button">Explore Ensemble</button></div>
       </section>
 
     </main>
   </div>
+
+  <dialog id="how-it-works-dialog" class="how-it-works-dialog" aria-labelledby="how-it-works-title">
+    <form method="dialog" class="dialog-header"><div><h2 id="how-it-works-title">How Ensemble works</h2><p>Three steps to more relevant clothing ideas.</p></div><button class="dialog-close" value="cancel" aria-label="Close walkthrough">×</button></form>
+    <ol class="walkthrough-steps"><li><strong>Set your preferences</strong><p>Choose style directions, occasions, colours, fit, region and budget.</p></li><li><strong>Get recommendations</strong><p>Ensemble ranks clothing inspiration using your profile and seasonal preferences.</p></li><li><strong>Refine your selection</strong><p>Save pieces, mark items “Not for me”, and optionally use skin analysis or virtual try-on.</p></li></ol>
+    <div class="dialog-actions"><button class="button button-primary" data-view="quiz" data-close-walkthrough type="button">Start with the style quiz</button><button class="button button-outline" data-view="discover" data-close-walkthrough type="button">View recommendations</button></div>
+  </dialog>
   <dialog id="try-on-dialog" class="try-on-dialog" aria-labelledby="try-on-title"><form method="dialog" class="dialog-header"><div><h2 id="try-on-title">Try on this style</h2><p id="try-on-item-name">Selected clothing idea</p></div><button class="dialog-close" value="cancel" aria-label="Close try-on">×</button></form><div class="dialog-content"><div class="try-on-reference"><img id="try-on-item-image" alt="Selected clothing inspiration"><p>Use this recommended style as the outfit reference.</p></div><label for="try-on-photo">Your front-facing photo showing your shoulders and upper body <span class="required-marker">*</span></label><input id="try-on-photo" type="file" accept="image/jpeg,image/png" required><label class="consent-line"><input id="try-on-consent" type="checkbox"><span>I consent to sending my photo and this style image to YouCam for virtual try-on. <span class="required-marker">*</span></span></label><p class="small-note">Use a clear, front-facing photo with your shoulders and upper body visible. The recommended images are styling inspiration and may not represent exact retail products.</p><button id="run-try-on" class="button button-primary" type="button">Generate try-on</button><div id="try-on-result" aria-live="polite"></div></div></dialog>
 </body>
 </html>

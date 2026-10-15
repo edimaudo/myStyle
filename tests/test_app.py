@@ -40,6 +40,7 @@ def test_landing_page_has_new_brand_and_style_flow(client):
     assert response.status_code == 200
     assert "myStyle" in response.text
     assert "Get dressed like" in response.text
+    assert "myStyle brings together" in response.text
     assert "Build my style profile" in response.text
     assert "season" in response.text.lower()
     assert "WornOnTV" not in response.text
@@ -267,10 +268,10 @@ def test_app_ui_uses_selfie_only_for_skin_analysis(client):
 def test_app_ui_has_style_quiz_custom_palette_and_saved_feedback(client):
     signed_in(client)
     html = client.get("/app").text
-    assert "Take the style quiz" in html
-    assert "Have a colour scheme in mind?" in html
+    assert "Ensemble" in html
+    assert "Have a colour scheme in mind?" not in html
     assert 'id="quiz-palette-choices"' in html
-    assert 'id="quick-color-scheme"' in html
+    assert 'id="quick-color-scheme"' not in html
     assert '"My own colour scheme"' in (__import__("pathlib").Path(__file__).resolve().parents[1] / "mystyle" / "catalog.py").read_text()
     script = (__import__("pathlib").Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()
     assert "Not for me" in script or "data-not-for-me" in script
@@ -281,8 +282,9 @@ def test_app_ui_discloses_not_live_product_data(client):
     signed_in(client)
     html = client.get("/app").text.lower()
     assert "catalogue-disclaimer" not in html
-    assert "how to use mystyle" in html
-    assert "my style" in html
+    assert "how ensemble works" in html
+    assert "my edit" not in html
+    assert "personal edit" not in html
 
 
 def test_skin_analysis_and_try_on_task_endpoints_are_wired(client):
@@ -309,11 +311,18 @@ def test_legacy_tv_brand_and_source_have_been_removed_from_runtime_code():
     assert "styleTV" not in joined
 
 
-def test_requested_ux_cleanup_and_sidebar_walkthrough(client):
+def test_requested_ux_cleanup_and_walkthrough_dialog(client):
     signed_in(client)
     html = client.get("/app").text
-    assert "How to use myStyle" in html
-    assert 'data-scroll-to="skin-analysis-card"' in html
+    assert "How Ensemble works" in html
+    assert 'id="how-it-works-dialog"' in html
+    assert "sidebar-walkthrough" not in html
+    assert 'data-view-panel="skin-analysis"' in html
+    assert 'data-view="skin-analysis"' in html
+    assert 'data-view="skin-analysis">Review analysis</button>' in html
+    assert 'data-scroll-to="skin-analysis-card"' not in html
+    assert 'id="mystyle-hero"' not in html
+    assert html.index('id="recommendation-grid"') < html.index('id="view-quiz"')
     assert "catalogue-disclaimer" not in html
     assert "mystyle-footer" not in html
     assert "quiz-step-label" not in html
@@ -325,3 +334,24 @@ def test_requested_ux_cleanup_and_sidebar_walkthrough(client):
     assert 'href="#what-you-get">Your style edit' not in landing
     assert "mystyle-marketing-footer" not in landing
 
+
+
+def test_ensemble_navigation_is_icon_free_and_recommendations_lock_while_loading(client):
+    signed_in(client)
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    html = client.get("/app").text
+    script = (root / "public" / "assets" / "app.js").read_text()
+    assert "<title>myStyle — Personal styling</title>" in html
+    assert 'name="description" content="myStyle helps you discover clothing recommendations in Ensemble' in html
+    assert '<h1 class="topbar-title">myStyle</h1>' in html
+    assert '<h1>Ensemble</h1>' in html
+    assert 'id="edit-summary"' not in html
+    assert 'id="recommendation-source"' not in html
+    assert 'class="user-avatar"' not in html
+    assert 'class="side-nav-link is-active" data-view="discover" type="button">Ensemble</button>' in html
+    assert 'class="side-nav-link" data-view="skin-analysis" type="button">Skin analysis</button>' in html
+    assert "state.recommendationsLoading" in script
+    assert "aria-busy" in script
+    assert "if (state.recommendationsLoading) return;" in script
+    assert "Loading recommendations…" in script
