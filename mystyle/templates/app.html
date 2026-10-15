@@ -17,7 +17,7 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="app-shell mystyle-shell">
     <aside class="app-sidebar mystyle-sidebar">
-      <a class="brand" href="/" aria-label="myStyle home"><span class="brand-mark mystyle-brand-mark">m<span>y</span></span><span>myStyle</span></a>
+      <a class="brand" href="/" aria-label="myStyle home"><span>myStyle</span></a>
       
       <nav class="side-nav" aria-label="Main navigation">
         <button class="side-nav-link is-active" data-view="discover" type="button">Ensemble</button>
@@ -26,12 +26,6 @@
         <button class="side-nav-link" data-view="skin-analysis" type="button">Skin analysis</button>
         <button class="side-nav-link" data-view="saved" type="button">Saved pieces <span class="nav-count" id="saved-count">0</span></button>
       </nav>
-      <div class="sidebar-season-card">
-        <span class="eyebrow">YOUR SEASON</span>
-        <strong id="sidebar-season">Current season</strong>
-        <p id="sidebar-season-note">Pieces matched to your style and the weather you expect.</p>
-        <button class="text-link" data-view="profile" type="button">Adjust season</button>
-      </div>
       <div class="sidebar-bottom">
         <div class="user-chip"><span><strong class="user-name">myStyle Member</strong><small>Style profile</small></span></div>
         <a class="side-signout" href="/signout">Sign out</a>
@@ -44,7 +38,7 @@
         <div class="app-topbar-controls">
           <div class="site-display-controls" aria-label="Display settings">
             <div class="font-control" role="group" aria-label="Text size"><span>Text</span><button type="button" data-font="small" aria-label="Small text" aria-pressed="false">A</button><button type="button" data-font="medium" aria-label="Medium text" aria-pressed="true">A</button><button type="button" data-font="large" aria-label="Large text" aria-pressed="false">A</button></div>
-            <button type="button" class="icon-control theme-toggle" aria-label="Switch to dark mode" title="Switch colour theme"><span aria-hidden="true">◐</span><span class="theme-label">Dark mode</span></button>
+            <button type="button" class="theme-toggle" aria-label="Switch to dark mode" title="Switch colour theme"><span class="theme-label">Dark mode</span></button>
           </div>
         </div>
       </header>
@@ -52,16 +46,16 @@
 
       <section class="app-view is-active" id="view-discover" data-view-panel="discover">
 
-        <div class="section-heading-row mystyle-section-heading"><div><h1>Ensemble</h1></div><div class="ensemble-heading-actions"><button class="button button-outline" id="how-it-works-open" type="button">How it works</button><button class="button button-primary" id="refresh-edit" type="button">Refresh recommendations</button></div></div>
-        <form id="style-search-form" class="search-panel mystyle-search-panel"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="style-search">Search the style catalogue</label><input id="style-search" name="query" type="search" placeholder="Search for linen, tailoring, workwear, colour…" autocomplete="off"><button class="button button-outline" type="submit">Search styles</button><button class="text-link" type="button" id="clear-style-search">Clear</button></form>
+        <div class="section-heading-row mystyle-section-heading"><div><h1>Ensemble</h1></div><div class="ensemble-heading-actions"><button class="button button-primary" id="refresh-edit" type="button">Refresh recommendations</button></div></div>
+        <form id="style-search-form" class="search-panel mystyle-search-panel"><label class="sr-only" for="style-search">Search the style catalogue</label><input id="style-search" name="query" type="search" placeholder="Search for linen, tailoring, workwear, colour…" autocomplete="off"><button class="button button-outline" type="submit">Search styles</button><button class="text-link" type="button" id="clear-style-search">Clear</button></form>
         <div class="recommendation-meta"><p id="recommendation-status" aria-live="polite">Loading recommendations…</p></div>
         <div id="recommendation-grid" class="style-grid" aria-live="polite"></div>
 
-        <section class="skin-insight-banner" id="skin-insight-banner" hidden><div class="skin-insight-mark">✳</div><div><span class="eyebrow">COLOUR NOTES</span><h2 id="skin-insight-title">Your colour analysis</h2><p id="skin-insight-copy"></p></div><button class="button button-outline" type="button" data-view="skin-analysis">Review analysis</button></section>
+        <section class="skin-insight-banner" id="skin-insight-banner" hidden><div><span class="eyebrow">COLOUR NOTES</span><h2 id="skin-insight-title">Your colour analysis</h2><p id="skin-insight-copy"></p></div><button class="button button-outline" type="button" data-view="skin-analysis">Review analysis</button></section>
       </section>
 
       <section class="app-view" id="view-quiz" data-view-panel="quiz" hidden>
-        <div class="welcome-row"><div><h1>Build your style profile.</h1><p class="page-lede">Choose the style cues that feel right. Ensemble uses these to rank clothing recommendations.</p></div></div>
+        <div class="welcome-row"><div><h1>Style quiz</h1><p class="page-lede">Choose the styles, occasions, colours and budget that suit you.</p></div></div>
         <form id="quiz-form" class="profile-layout quiz-layout">
           <section class="profile-card"><div class="profile-card-heading"><div><h2>What feels most like you?</h2><p>Choose a few aesthetics you would actually wear.</p></div></div><div id="quiz-style-choices" class="choice-group"></div></section>
           <section class="profile-card"><div class="profile-card-heading"><div><h2>Where do you want these clothes to work?</h2><p>Select the parts of your life your wardrobe needs to support.</p></div></div><div id="quiz-occasion-choices" class="choice-group"></div></section>
@@ -99,24 +93,19 @@
       <section class="app-view" id="view-skin-analysis" data-view-panel="skin-analysis" hidden>
         <div class="welcome-row"><div><h1>Skin analysis</h1><p class="page-lede">Optional facial colour-tone analysis can inform your clothing palette.</p></div><button class="button button-outline" data-view="profile" type="button">Style profile</button></div>
         <section class="profile-card skin-analysis-card" id="skin-analysis-card"><div class="profile-card-heading"><div><h2>Skin and facial colour analysis</h2><p>Use a selfie to identify colour tones that can inform your clothing palette.</p></div></div>
-            <div class="skin-analysis-layout"><div class="skin-analysis-controls"><label class="upload-label" for="skin-photo">Choose a front-facing selfie (JPG or PNG)</label><input id="skin-photo" type="file" accept="image/jpeg,image/png" aria-describedby="skin-photo-help"><div class="photo-guidance" id="skin-photo-help"><strong>For useful colour detection</strong><p>Use a clear, front-facing photo with one person, even daylight, and minimal coloured lighting. This image is used only for facial colour-tone analysis.</p></div><label class="consent-line skin-consent"><input id="skin-consent" type="checkbox"><span>I consent to sending this selfie to YouCam for facial colour-tone analysis. <span class="required-marker" aria-hidden="true">*</span><span class="sr-only">Required to analyze the image</span></span></label><button class="button button-outline" id="run-skin-analysis" type="button">Analyze my colours</button><p class="small-note">Your selfie is sent to YouCam only after you give consent and start analysis.</p></div><div id="skin-analysis-preview" class="skin-analysis-preview" aria-live="polite"><div class="skin-empty-state"><span class="skin-empty-mark">◌</span><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div></div></div>
+            <div class="skin-analysis-layout"><div class="skin-analysis-controls"><label class="upload-label" for="skin-photo">Choose a front-facing selfie (JPG or PNG)</label><input id="skin-photo" type="file" accept="image/jpeg,image/png" aria-describedby="skin-photo-help"><div class="photo-guidance" id="skin-photo-help"><strong>Photo size and framing</strong><p>Use a portrait JPG or PNG. Each side must be at least 320 px; the longest side must not exceed 4,096 px; file size must be under 9.5 MB. Around 720 × 1,080 px is a good target. One person only: face centred, fully visible and facing forward, with the face wider than 60% of the image width. Use even daylight and avoid coloured lighting or filters. Images larger than 1,080 px on a side are resized automatically.</p></div><label class="consent-line skin-consent"><input id="skin-consent" type="checkbox"><span>I consent to sending this selfie to YouCam for facial colour-tone analysis. <span class="required-marker" aria-hidden="true">*</span><span class="sr-only">Required to analyze the image</span></span></label><button class="button button-outline" id="run-skin-analysis" type="button">Analyze my colours</button><p class="small-note">Your selfie is sent to YouCam only after you give consent and start analysis.</p></div><div id="skin-analysis-preview" class="skin-analysis-preview" aria-live="polite"><div class="skin-empty-state"><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div></div></div>
           </section>
       </section>
 
       <section class="app-view" id="view-saved" data-view-panel="saved" hidden>
         <div class="welcome-row"><div><h1>Pieces worth keeping.</h1><p class="page-lede">Save the ideas you want to explore later. Shop links search for similar items in your selected country.</p></div><button class="button button-outline" data-view="discover" type="button">Back to Ensemble</button></div>
         <div id="saved-grid" class="style-grid"></div>
-        <div id="saved-empty" class="empty-state" hidden><div class="skin-empty-mark">♡</div><h2>Your shortlist is empty.</h2><p>Save any piece from Ensemble to keep it here.</p><button class="button button-primary" data-view="discover" type="button">Explore Ensemble</button></div>
+        <div id="saved-empty" class="empty-state" hidden><h2>Your shortlist is empty.</h2><p>Save any piece from Ensemble to keep it here.</p><button class="button button-primary" data-view="discover" type="button">Explore Ensemble</button></div>
       </section>
 
     </main>
   </div>
 
-  <dialog id="how-it-works-dialog" class="how-it-works-dialog" aria-labelledby="how-it-works-title">
-    <form method="dialog" class="dialog-header"><div><h2 id="how-it-works-title">How Ensemble works</h2><p>Three steps to more relevant clothing ideas.</p></div><button class="dialog-close" value="cancel" aria-label="Close walkthrough">×</button></form>
-    <ol class="walkthrough-steps"><li><strong>Set your preferences</strong><p>Choose style directions, occasions, colours, fit, region and budget.</p></li><li><strong>Get recommendations</strong><p>Ensemble ranks clothing inspiration using your profile and seasonal preferences.</p></li><li><strong>Refine your selection</strong><p>Save pieces, mark items “Not for me”, and optionally use skin analysis or virtual try-on.</p></li></ol>
-    <div class="dialog-actions"><button class="button button-primary" data-view="quiz" data-close-walkthrough type="button">Start with the style quiz</button><button class="button button-outline" data-view="discover" data-close-walkthrough type="button">View recommendations</button></div>
-  </dialog>
   <dialog id="try-on-dialog" class="try-on-dialog" aria-labelledby="try-on-title"><form method="dialog" class="dialog-header"><div><h2 id="try-on-title">Try on this style</h2><p id="try-on-item-name">Selected clothing idea</p></div><button class="dialog-close" value="cancel" aria-label="Close try-on">×</button></form><div class="dialog-content"><div class="try-on-reference"><img id="try-on-item-image" alt="Selected clothing inspiration"><p>Use this recommended style as the outfit reference.</p></div><label for="try-on-photo">Your front-facing photo showing your shoulders and upper body <span class="required-marker">*</span></label><input id="try-on-photo" type="file" accept="image/jpeg,image/png" required><label class="consent-line"><input id="try-on-consent" type="checkbox"><span>I consent to sending my photo and this style image to YouCam for virtual try-on. <span class="required-marker">*</span></span></label><p class="small-note">Use a clear, front-facing photo with your shoulders and upper body visible. The recommended images are styling inspiration and may not represent exact retail products.</p><button id="run-try-on" class="button button-primary" type="button">Generate try-on</button><div id="try-on-result" aria-live="polite"></div></div></dialog>
 </body>
 </html>

@@ -282,7 +282,7 @@ def test_app_ui_discloses_not_live_product_data(client):
     signed_in(client)
     html = client.get("/app").text.lower()
     assert "catalogue-disclaimer" not in html
-    assert "how ensemble works" in html
+    assert "how ensemble works" not in html
     assert "my edit" not in html
     assert "personal edit" not in html
 
@@ -311,11 +311,19 @@ def test_legacy_tv_brand_and_source_have_been_removed_from_runtime_code():
     assert "styleTV" not in joined
 
 
-def test_requested_ux_cleanup_and_walkthrough_dialog(client):
+def test_requested_ux_cleanup_and_no_unexplained_walkthrough(client):
     signed_in(client)
     html = client.get("/app").text
-    assert "How Ensemble works" in html
-    assert 'id="how-it-works-dialog"' in html
+    assert "How Ensemble works" not in html
+    assert 'id="how-it-works-dialog"' not in html
+    assert 'id="how-it-works-open"' not in html
+    assert 'class="sidebar-season-card"' not in html
+    assert 'class="brand-mark' not in html
+    assert "How Ensemble works" not in html
+    assert "✳" not in html and "◈" not in client.get("/").text
+    assert "Photo size and framing" in html
+    assert "4,096 px" in html
+    assert "720 × 1,080 px" in html
     assert "sidebar-walkthrough" not in html
     assert 'data-view-panel="skin-analysis"' in html
     assert 'data-view="skin-analysis"' in html
@@ -353,5 +361,11 @@ def test_ensemble_navigation_is_icon_free_and_recommendations_lock_while_loading
     assert 'class="side-nav-link" data-view="skin-analysis" type="button">Skin analysis</button>' in html
     assert "state.recommendationsLoading" in script
     assert "aria-busy" in script
+    assert "getImageDimensions(photo)" in script
+    assert "dimensions.width < 320" in script
+    styles = (root / "public" / "assets" / "style.css").read_text()
+    assert ".quiz-layout { max-width: none; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;" in styles
+    assert "skin-insight-mark" not in html and "skin-empty-mark" not in script
+    assert "search-symbol" not in html
     assert "if (state.recommendationsLoading) return;" in script
     assert "Loading recommendations…" in script

@@ -308,7 +308,7 @@
     const target = $('#skin-analysis-preview');
     if (!target) return;
     if (!colors || !Object.keys(colors).length) {
-      target.innerHTML = '<div class="skin-empty-state"><span class="skin-empty-mark">◌</span><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div>';
+      target.innerHTML = '<div class="skin-empty-state"><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div>';
       $('#skin-insight-banner').hidden = true;
       return;
     }
@@ -316,7 +316,7 @@
     const labels = { skin_color: 'Skin colour', hair_color: 'Hair colour', eye_color: 'Eye colour', eyebrow_color: 'Eyebrow colour', lip_color: 'Lip colour' };
     const detected = order.filter(key => /^#[0-9a-f]{6}$/i.test(colors[key] || '')).map(key => `<div class="analysis-tone"><span style="background:${escapeHTML(colors[key])}"></span><div><strong>${escapeHTML(labels[key])}</strong><small>${escapeHTML(colors[key])}${colors[`${key}_name`] ? ` · ${escapeHTML(colors[`${key}_name`])}` : ''}</small></div></div>`).join('');
     const guide = skinPaletteGuide(colors);
-    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><span class="eyebrow">Y O U C A M · DETECTED COLOUR TONES</span><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration—not as rules about what suits you.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}</div>`;
+    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration—not as rules about what suits you.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}</div>`;
     const banner = $('#skin-insight-banner');
     if (banner && guide) {
       banner.hidden = false;
@@ -332,6 +332,22 @@
     if (state.colorPreviewUrl) URL.revokeObjectURL(state.colorPreviewUrl);
     state.colorPreviewUrl = URL.createObjectURL(file);
     target.innerHTML = `<div class="skin-local-preview"><img src="${state.colorPreviewUrl}" alt="Local preview of the selfie for colour analysis"><div><strong>Selfie selected</strong><p>This preview stays in this page. The image is sent only when you start analysis and consent.</p></div></div>`;
+  }
+
+  function getImageDimensions(file) {
+    return new Promise((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('This image could not be read. Choose a valid JPG or PNG file.'));
+      };
+      image.src = objectUrl;
+    });
   }
 
   async function pollColorTask(taskId, maxAttempts = 48) {
@@ -352,6 +368,17 @@
     if (!state.config.youcam_configured) { showAlert('YouCam skin analysis is not configured on this deployment. Add YCE_API_KEY in environment variables. Your selfie has not been uploaded.', 'error'); return; }
     if (!['image/jpeg', 'image/png'].includes(photo.type)) { showAlert('Use a JPG or PNG selfie.', 'error'); return; }
     if (!photo.size || photo.size > 9_500_000) { showAlert('Choose a non-empty image smaller than 9.5 MB.', 'error'); return; }
+    let dimensions;
+    try { dimensions = await getImageDimensions(photo); }
+    catch (error) { showAlert(error.message, 'error'); return; }
+    if (dimensions.width < 320 || dimensions.height < 320) {
+      showAlert('The image must be at least 320 × 320 pixels. Choose a larger photo.', 'error');
+      return;
+    }
+    if (Math.max(dimensions.width, dimensions.height) > 4096) {
+      showAlert('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', 'error');
+      return;
+    }
     const button = $('#run-skin-analysis');
     button.disabled = true;
     button.textContent = 'Starting analysis…';
@@ -594,7 +621,7 @@
   function attachEvents() {
     document.addEventListener('click', async event => {
       const viewButton = event.target.closest('[data-view]');
-      if (viewButton) { if (viewButton.hasAttribute('data-close-walkthrough')) $('#how-it-works-dialog')?.close(); switchView(viewButton.dataset.view); return; }
+      if (viewButton) { switchView(viewButton.dataset.view); return; }
       const tryOnButton = event.target.closest('[data-try-on]');
       if (tryOnButton) { openTryOn(tryOnButton.dataset.tryOn); return; }
       const saveButton = event.target.closest('[data-save-item]');
@@ -612,7 +639,6 @@
     $('#quick-palette-form')?.addEventListener('submit', applyQuickPalette);
     $('#profile-country')?.addEventListener('change', () => { renderBudgetOptions(); });
     $('#refresh-edit')?.addEventListener('click', () => requestRecommendations(state.lastQuery));
-    $('#how-it-works-open')?.addEventListener('click', () => $('#how-it-works-dialog')?.showModal());
     $('#style-search-form')?.addEventListener('submit', event => { event.preventDefault(); requestRecommendations($('#style-search')?.value.trim() || ''); });
     $('#clear-style-search')?.addEventListener('click', () => { $('#style-search').value = ''; requestRecommendations(''); });
     $('#skin-photo')?.addEventListener('change', setSkinPhotoPreview);
