@@ -10,7 +10,7 @@
     season: 'auto', climate: 'variable', budget: 100, fitPreference: 'balanced',
     sizeTop: '', sizeBottom: '', sizeShoe: '', notes: '',
     styleTags: ['classic', 'casual'], occasions: ['everyday', 'work'],
-    colorScheme: 'earth', customColors: '', colorPreferences: [], skinAnalysis: null,
+    colorScheme: 'earth', customColors: '', colorPreferences: [], skinAnalysis: null, skinAnalysisApplied: false,
     savedItemIds: [], notForMeItemIds: []
   };
   const BUDGETS = [
@@ -22,7 +22,7 @@
   const state = {
     db: null, profile: structuredClone(DEFAULT_PROFILE), settings: { theme: 'light', fontSize: 'medium' },
     catalog: { items: [], palettes: [], styles: [], occasions: [] }, config: {},
-    recommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', colorPreviewUrl: null, recommendationsLoading: false
+    recommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', colorPreviewUrl: null, recommendationsLoading: false, queuedRecommendation: null
   };
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -57,7 +57,19 @@
 
   async function loadLocalState() {
     const profileRow = await dbRequest('profile', 'get', PROFILE_KEY);
-    if (profileRow?.value) state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
+    if (profileRow?.value) {
+      state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
+      const stored = profileRow.value;
+      const hasSavedSkinColour = typeof state.profile.skinAnalysis?.skin_color === 'string'
+        && /^#[0-9a-f]{6}$/i.test(state.profile.skinAnalysis.skin_color);
+      // Migrate profiles created before skin analysis was wired into the palette choice.
+      // Only migrate the old default palette; preserve explicit non-default choices.
+      if (hasSavedSkinColour && stored.skinAnalysisApplied === undefined && state.profile.colorScheme === 'earth') {
+        state.profile.colorScheme = 'selfie';
+        state.profile.skinAnalysisApplied = true;
+        await persistProfile();
+      }
+    }
     const settingsRow = await dbRequest('settings', 'get', SETTINGS_KEY);
     if (settingsRow?.value) state.settings = { ...state.settings, ...settingsRow.value };
     // Keep saved/disliked IDs valid for this version of the curated style catalogue.
@@ -316,12 +328,22 @@
     const labels = { skin_color: 'Skin colour', hair_color: 'Hair colour', eye_color: 'Eye colour', eyebrow_color: 'Eyebrow colour', lip_color: 'Lip colour' };
     const detected = order.filter(key => /^#[0-9a-f]{6}$/i.test(colors[key] || '')).map(key => `<div class="analysis-tone"><span style="background:${escapeHTML(colors[key])}"></span><div><strong>${escapeHTML(labels[key])}</strong><small>${escapeHTML(colors[key])}${colors[`${key}_name`] ? ` · ${escapeHTML(colors[`${key}_name`])}` : ''}</small></div></div>`).join('');
     const guide = skinPaletteGuide(colors);
-    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration—not as rules about what suits you.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}</div>`;
+    const applicationCopy = state.profile.colorScheme === 'selfie'
+      ? 'Applied to Ensemble: these colour cues now guide recommendation ranking. You can choose another palette in Style profile at any time.'
+      : 'These colour cues are also considered alongside your selected palette.';
+    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration—not as rules about what suits you.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}<p class="analysis-applied-note">${escapeHTML(applicationCopy)}</p></div>`;
     const banner = $('#skin-insight-banner');
-    if (banner && guide) {
-      banner.hidden = false;
-      $('#skin-insight-title').textContent = guide.label;
-      $('#skin-insight-copy').textContent = `Ensemble now considers these optional palette cues: ${guide.colors.slice(0, 5).join(', ')}. You can still choose any colour scheme.`;
+    if (banner) {
+      if (!guide) {
+        banner.hidden = true;
+      } else {
+        banner.hidden = false;
+        $('#skin-insight-title').textContent = guide.label;
+        const cues = guide.colors.slice(0, 5).join(', ');
+        $('#skin-insight-copy').textContent = state.profile.colorScheme === 'selfie'
+          ? `Your skin analysis is guiding Ensemble’s colour ranking. Current colour cues: ${cues}. Recommendations still reflect your style, season, fit and budget. You can choose another palette in Style profile at any time.`
+          : `Ensemble also considers colour cues from your skin analysis alongside your selected palette: ${cues}. Choose another palette in Style profile at any time.`;
+      }
     }
   }
 
@@ -361,6 +383,14 @@
     throw new Error('Analysis is taking longer than expected. Please try again in a moment.');
   }
 
+  function applySkinAnalysisToProfile(colors) {
+    state.profile.skinAnalysis = colors;
+    state.profile.skinAnalysisApplied = true;
+    // Applying an analysis should have an immediate, visible effect on the recommendations.
+    // Users can later choose any palette in the quiz or Style profile.
+    state.profile.colorScheme = 'selfie';
+  }
+
   async function runSkinAnalysis() {
     const photo = $('#skin-photo')?.files?.[0];
     if (!photo) { showAlert('Choose a front-facing JPG or PNG selfie first.', 'error'); return; }
@@ -391,17 +421,21 @@
       const result = await pollColorTask(task.task_id);
       if (result.status === 'error') throw new Error(result.message || 'Skin colour analysis could not be completed.');
       const colors = result.colors || {};
-      const recognizedTone = Object.values(colors).some(value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value));
-      if (!recognizedTone) throw new Error('YouCam completed the task but did not return recognizable colour values. Try a clearer front-facing selfie.');
-      state.profile.skinAnalysis = colors;
+      const hasSkinColour = typeof colors.skin_color === 'string' && /^#[0-9a-f]{6}$/i.test(colors.skin_color);
+      if (!hasSkinColour) throw new Error('YouCam completed the task but did not return a usable skin colour value. Try a clearer, evenly lit front-facing selfie.');
+      applySkinAnalysisToProfile(colors);
       await persistProfile();
       renderSkinAnalysis(state.profile.skinAnalysis);
       renderPaletteSelect();
-      await requestRecommendations(state.lastQuery);
+      const recommendationsUpdated = await requestRecommendations(state.lastQuery);
       $('#skin-photo').value = '';
       if (state.colorPreviewUrl) URL.revokeObjectURL(state.colorPreviewUrl);
       state.colorPreviewUrl = null;
-      showAlert('Colour analysis complete. The detected colour values have been saved and used to refine Ensemble.', 'good');
+      if (recommendationsUpdated) {
+        showAlert('Colour analysis complete. Its colour cues are now guiding Ensemble recommendations.', 'good');
+      } else {
+        showAlert('Colour analysis was saved, but Ensemble could not refresh. Return to Ensemble and select Refresh recommendations.', 'error');
+      }
     } catch (error) {
       showAlert(error.message || 'YouCam could not complete colour analysis.', 'error');
     } finally {
@@ -472,7 +506,16 @@
   }
 
   async function requestRecommendations(query = '') {
-    if (state.recommendationsLoading) return;
+    if (state.recommendationsLoading) {
+      return new Promise(resolve => {
+        if (state.queuedRecommendation) {
+          state.queuedRecommendation.query = query;
+          state.queuedRecommendation.resolvers.push(resolve);
+        } else {
+          state.queuedRecommendation = { query, resolvers: [resolve] };
+        }
+      });
+    }
     state.recommendationsLoading = true;
     const id = ++state.requestId;
     state.lastQuery = query;
@@ -494,17 +537,19 @@
     });
     try {
       const result = await apiFetch('/api/recommendations', { method: 'POST', body: JSON.stringify({ profile: state.profile, query, limit: 8 }) });
-      if (id !== state.requestId) return;
+      if (id !== state.requestId) return false;
       state.recommendations = result.recommendations || [];
       updateSeasonDetails(result);
       if (status) status.textContent = state.recommendations.length ? `${state.recommendations.length} recommendations` : 'No matches found';
       renderRecommendations(state.recommendations);
       renderSaved();
       renderSkinAnalysis(state.profile.skinAnalysis);
+      return true;
     } catch (error) {
-      if (id !== state.requestId) return;
+      if (id !== state.requestId) return false;
       if (status) status.textContent = 'Could not load recommendations';
       if (grid) grid.innerHTML = `<div class="no-results"><strong>We couldn't load recommendations.</strong><p>${escapeHTML(error.message)}</p><button class="button button-outline" type="button" id="retry-edit">Try again</button></div>`;
+      return false;
     } finally {
       state.recommendationsLoading = false;
       if (grid) grid.removeAttribute('aria-busy');
@@ -513,6 +558,12 @@
         button.removeAttribute('aria-busy');
         if (originalLabels.has(button)) button.innerHTML = originalLabels.get(button);
       });
+      const queued = state.queuedRecommendation;
+      if (queued) {
+        state.queuedRecommendation = null;
+        const succeeded = await requestRecommendations(queued.query);
+        queued.resolvers.forEach(resolve => resolve(succeeded));
+      }
     }
   }
 

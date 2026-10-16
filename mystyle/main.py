@@ -282,6 +282,7 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
     preferred_fit = _normalise_text(profile.get("fitPreference") or "balanced")
     guide_palettes = set((guide or {}).get("palette_ids") or [])
     guide_colour_terms = _guide_colour_terms(guide)
+    skin_palette_is_primary = _normalise_text(profile.get("colorScheme") or "earth") == "selfie"
 
     scored: list[tuple[float, dict[str, Any]]] = []
     for item in items:
@@ -316,11 +317,15 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
         fit_tags = set(item.get("fit_tags", ["balanced"]))
         if preferred_fit in fit_tags:
             score += 3.5
-        # Use YouCam's detected colour data as an additional signal without
-        # overriding a palette the user deliberately selected.
+        # When the user has completed skin analysis, make those cues a primary
+        # palette preference until they explicitly choose another scheme. If they
+        # choose another scheme later, retain a smaller complementary signal.
         if guide:
-            score += 2.25 if guide_palettes & item_palettes else 0.0
-            score += min(4.0, 1.25 * len(guide_colour_terms & item_colors))
+            palette_overlap = bool(guide_palettes & item_palettes)
+            colour_overlap = len(guide_colour_terms & item_colors)
+            score += (4.0 if skin_palette_is_primary else 2.0) if palette_overlap else 0.0
+            score += min(6.0 if skin_palette_is_primary else 3.0,
+                         (1.75 if skin_palette_is_primary else 0.75) * colour_overlap)
         climate = _normalise_text(profile.get("climate") or "variable")
         if "all" in item_climates or climate in item_climates or (climate == "variable" and "mild" in item_climates):
             score += 3.0
@@ -334,7 +339,9 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
         enriched["currency"] = country_currency
         enriched["season_match"] = season in item_seasons or "all" in item_seasons
         enriched["fit_match"] = preferred_fit in fit_tags
-        enriched["recommendation_reason"] = _recommendation_reason(item, style_tags, occasions, scheme_ids, season, guide, preferred_fit)
+        enriched["recommendation_reason"] = _recommendation_reason(
+            item, style_tags, occasions, scheme_ids, season, guide, preferred_fit, skin_palette_is_primary
+        )
         enriched["match_score"] = round(score, 3)
         scored.append((score, enriched))
 
@@ -342,27 +349,40 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
     return [item for _, item in scored[:limit]]
 
 
-def _recommendation_reason(item: dict[str, Any], style_tags: set[str], occasions: set[str], palettes: set[str], season: str, guide: dict[str, Any] | None, preferred_fit: str) -> str:
+def _recommendation_reason(
+    item: dict[str, Any], style_tags: set[str], occasions: set[str], palettes: set[str],
+    season: str, guide: dict[str, Any] | None, preferred_fit: str, skin_palette_is_primary: bool = False,
+) -> str:
     tags = {_normalise_text(x) for x in item.get("style_tags", [])}
-    matched = sorted(tags & style_tags)
-    if matched:
-        reason = f"Fits your {', '.join(matched[:2])} style direction"
-    elif set(item.get("palettes", [])) & palettes:
-        reason = "Works with your selected colour direction"
-    elif set(item.get("occasions", [])) & occasions:
-        reason = "A useful option for the occasions you selected"
+    item_palettes = set(item.get("palettes", []))
+    item_colors = {_normalise_text(c) for c in item.get("colors", [])}
+    guide_palettes = set((guide or {}).get("palette_ids", []))
+    guide_color_match = bool(guide and (_guide_colour_terms(guide) & item_colors))
+    guide_palette_match = bool(guide and (item_palettes & guide_palettes))
+
+    if skin_palette_is_primary and guide_palette_match:
+        reason = "Colour direction matched to your skin analysis"
+    elif skin_palette_is_primary and guide_color_match:
+        reason = "Includes colours suggested by your skin analysis"
     else:
-        reason = "A versatile piece to build an outfit around"
+        matched = sorted(tags & style_tags)
+        if matched:
+            reason = f"Fits your {', '.join(matched[:2])} style direction"
+        elif item_palettes & palettes:
+            reason = "Works with your selected colour direction"
+        elif set(item.get("occasions", [])) & occasions:
+            reason = "A useful option for the occasions you selected"
+        else:
+            reason = "A versatile piece to build an outfit around"
+        if not skin_palette_is_primary and guide_palette_match:
+            reason += " · also aligns with colour cues from your skin analysis"
+        elif not skin_palette_is_primary and guide_color_match:
+            reason += " · includes colours suggested by your skin analysis"
+
     if season in item.get("seasons", []):
         reason += f" · suited to {SEASON_LABELS[season].lower()}"
     if preferred_fit in set(item.get("fit_tags", ["balanced"])):
         reason += f" · aligns with your {preferred_fit} fit preference"
-    item_palettes = set(item.get("palettes", []))
-    guide_palettes = set((guide or {}).get("palette_ids", []))
-    if guide and (item_palettes & guide_palettes):
-        reason += " · colour direction aligns with your facial colour cues"
-    elif guide and _guide_colour_terms(guide) & {_normalise_text(c) for c in item.get("colors", [])}:
-        reason += " · colour ideas informed by your facial colour cues"
     return reason + "."
 
 
@@ -371,14 +391,29 @@ async def gemini_rank_items(profile: dict[str, Any], query: str, items: list[dic
         return None
     try:
         from google import genai
-        allowed = [{"id": i["id"], "name": i["name"], "category": i["category"], "tags": i["style_tags"], "colours": i["colors"], "seasons": i["seasons"], "occasions": i["occasions"]} for i in items]
+        allowed = [{
+            "id": i["id"], "name": i["name"], "category": i["category"],
+            "tags": i["style_tags"], "colours": i["colors"], "palettes": i.get("palettes", []),
+            "seasons": i["seasons"], "occasions": i["occasions"],
+        } for i in items]
+        guide = palette_guide(profile.get("skinAnalysis"))
+        ranking_profile = dict(profile)
+        if guide:
+            ranking_profile["skin_palette_guide"] = {
+                "family": guide["family"], "palette_ids": guide["palette_ids"],
+                "suggestions": guide["suggestions"],
+                "note": "Approximate colour inspiration from detected image values, not definitive colour typing.",
+            }
         prompt = (
             "You are the product ranking engine for myStyle, a North American personal-styling app. "
             "Rank only the supplied style concepts. Never invent items, brands, retailer inventory, exact product prices, "
-            "availability, or claims about the user's body. Respect the provided season, budget, color scheme and style preferences. "
+            "availability, or claims about the user's body. Respect the provided season, budget, colour scheme and style preferences. "
+            "When a skin_palette_guide is present, use its palette_ids and colour suggestions as a meaningful styling signal. "
+            "If colorScheme is 'selfie', prioritize compatibility with that guide among items that otherwise fit the user's style, "
+            "occasion, season and budget. Treat the guide as optional inspiration, not a rule, and do not infer identity or body traits. "
             "Return JSON only: {\"item_ids\":[ordered supplied IDs],\"explanation\":\"one concise sentence\"}. "
             "Do not include any IDs not in the list.\n"
-            f"QUERY: {query}\nPROFILE: {json.dumps(profile, ensure_ascii=False)}\nITEMS: {json.dumps(allowed, ensure_ascii=False)}"
+            f"QUERY: {query}\nPROFILE: {json.dumps(ranking_profile, ensure_ascii=False)}\nITEMS: {json.dumps(allowed, ensure_ascii=False)}"
         )
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = await asyncio.to_thread(

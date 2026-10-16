@@ -942,3 +942,7 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
 .try-on-dialog { border-radius: 8px; box-shadow: none; }
 .try-on-reference img { border-radius: 4px; }
 .save-style-button { border-radius: 6px; }
+
+
+/* Make the automatic hand-off from skin analysis to Ensemble explicit. */
+.analysis-applied-note { margin: 16px 0 0; padding-top: 13px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: .84rem; line-height: 1.6; }

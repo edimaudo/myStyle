@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -69,6 +70,32 @@ def test_signin_opens_mystyle_workspace(client):
     assert 'data-view="profile"' in response.text
     assert "WornOnTV" not in response.text
     assert csrf in response.text
+
+
+def test_skin_analysis_sits_immediately_below_ensemble_in_sidebar(client):
+    signed_in(client)
+    response = client.get("/app")
+    nav = re.search(r'<nav class="side-nav".*?</nav>', response.text, re.DOTALL).group(0)
+    nav_views = re.findall(r'data-view="([^"]+)"', nav)
+    assert nav_views[:2] == ["discover", "skin-analysis"]
+
+
+def test_skin_analysis_banner_appears_before_ensemble_recommendations(client):
+    signed_in(client)
+    response = client.get("/app")
+    page = response.text
+    assert page.index('id="skin-insight-banner"') < page.index('id="recommendation-grid"')
+    assert "Skin analysis is informing Ensemble" in page
+
+
+def test_skin_analysis_automatically_sets_the_guided_palette():
+    app_js = Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js"
+    source = app_js.read_text(encoding="utf-8")
+    assert "function applySkinAnalysisToProfile(colors)" in source
+    assert "state.profile.skinAnalysis = colors;" in source
+    assert "state.profile.colorScheme = 'selfie';" in source
+    assert "applySkinAnalysisToProfile(colors);" in source
+    assert "const hasSkinColour = typeof colors.skin_color === 'string'" in source
 
 
 def test_catalogue_contains_style_items_not_shows(client):
@@ -184,6 +211,22 @@ def test_skin_colour_guide_uses_detected_color_as_optional_inspiration():
     assert "not a definitive" in warm["note"]
 
 
+def test_skin_guided_palette_changes_ranking_when_analysis_is_applied():
+    base = {
+        "country": "CA", "season": "fall", "climate": "variable", "budget": "any",
+        "styleTags": [], "occasions": [], "fitPreference": "balanced",
+        "skinAnalysis": {"skin_color": "#9e9cc1"},
+    }
+    manual_palette = {**base, "colorScheme": "earth"}
+    skin_guided_palette = {**base, "colorScheme": "selfie"}
+    manual_scores = {item["id"]: item["match_score"] for item in main.rank_items(manual_palette, ITEMS, limit=len(ITEMS))}
+    guided_items = main.rank_items(skin_guided_palette, ITEMS, limit=len(ITEMS))
+    guided_scores = {item["id"]: item["match_score"] for item in guided_items}
+    assert guided_scores["midi-dress"] > manual_scores["midi-dress"]
+    assert guided_scores["soft-cardigan"] < manual_scores["soft-cardigan"]
+    assert any("skin analysis" in item["recommendation_reason"].lower() for item in guided_items)
+
+
 def test_recommendations_include_skin_palette_guide(client):
     csrf = signed_in(client)
     profile = {"country": "CA", "season": "fall", "climate": "variable", "budget": "any", "colorScheme": "selfie", "skinAnalysis": {"skin_color": "#b8795e"}}
@@ -192,6 +235,7 @@ def test_recommendations_include_skin_palette_guide(client):
     data = response.json()
     assert data["skin_palette_guide"]["family"] == "warm"
     assert data["recommendations"]
+    assert any("skin analysis" in item["recommendation_reason"].lower() for item in data["recommendations"])
 
 
 def test_api_requires_authentication(client):
@@ -256,7 +300,7 @@ def test_app_ui_uses_selfie_only_for_skin_analysis(client):
     response = client.get("/app")
     html = response.text
     assert "Skin and facial colour analysis" in html
-    assert "Use a selfie to identify colour tones" in html
+    assert "After analysis, detected colour cues automatically guide Ensemble recommendations" in html
     assert "try-on-dialog" in html
     assert "Skin analysis" in html
     script = (__import__("pathlib").Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()
@@ -367,5 +411,6 @@ def test_ensemble_navigation_is_icon_free_and_recommendations_lock_while_loading
     assert ".quiz-layout { max-width: none; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;" in styles
     assert "skin-insight-mark" not in html and "skin-empty-mark" not in script
     assert "search-symbol" not in html
-    assert "if (state.recommendationsLoading) return;" in script
+    assert "if (state.recommendationsLoading) {" in script
+    assert "state.queuedRecommendation" in script
     assert "Loading recommendations…" in script

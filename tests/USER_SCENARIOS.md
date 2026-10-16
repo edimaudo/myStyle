@@ -34,14 +34,15 @@
 
 ## Skin colour analysis
 
-1. Open Style profile.
+1. Open Skin analysis from the sidebar directly below Ensemble.
 2. Select a front-facing JPG/PNG selfie.
 3. Confirm the selfie preview is only local.
 4. Check the consent box and run analysis.
 5. With a valid `YCE_API_KEY`, verify the server uploads the photo to YouCam, creates a skin-tone-analysis task, polls it and returns detected colour values.
-6. Confirm skin/hair/eye/brow/lip colour swatches render and recommendations refresh.
-7. Confirm only returned colour values are saved; the actual selfie is not stored in IndexedDB.
-8. Without `YCE_API_KEY`, confirm the user sees a clear configuration message and there is no mock success result.
+6. Confirm skin/hair/eye/brow/lip colour swatches render, the active palette switches to the skin-analysis-guided option, and recommendations refresh.
+7. Return to Ensemble and confirm the visible skin-analysis summary appears above the recommendations and recommendation reasons identify skin-colour matches where relevant.
+8. Confirm only returned colour values are saved; the actual selfie is not stored in IndexedDB.
+9. Without `YCE_API_KEY`, confirm the user sees a clear configuration message and there is no mock success result.
 
 ## Limitations to verify in staging
 
