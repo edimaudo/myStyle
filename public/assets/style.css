@@ -946,3 +946,44 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
 
 /* Make the automatic hand-off from skin analysis to Ensemble explicit. */
 .analysis-applied-note { margin: 16px 0 0; padding-top: 13px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: .84rem; line-height: 1.6; }
+
+
+/* Ensemble's recommendation categories and skin-guided accessories. */
+.ensemble-tabs { display: flex; align-items: center; gap: 6px; margin: 22px 0 10px; border-bottom: 1px solid var(--line); }
+.ensemble-tab { appearance: none; padding: 12px 18px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--ink-soft); font: inherit; font-weight: 650; cursor: pointer; }
+.ensemble-tab:hover { color: var(--ink); }
+.ensemble-tab.is-active { border-bottom-color: var(--ink); color: var(--ink); }
+.ensemble-panel[hidden], .ensemble-tabs [hidden] { display: none !important; }
+.accessory-empty-state { max-width: 680px; margin: 18px 0 28px; padding: 28px; border: 1px solid var(--line); background: var(--surface); }
+.accessory-empty-state h2 { margin: 0 0 8px; font-size: 1.2rem; }
+.accessory-empty-state p { max-width: 62ch; margin: 0 0 18px; color: var(--ink-soft); line-height: 1.65; }
+.accessory-palette-summary { display: flex; align-items: flex-start; gap: 15px; margin: 18px 0; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.accessory-skin-swatch { flex: 0 0 42px; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 50%; }
+.accessory-palette-summary strong { font-size: .95rem; }
+.accessory-palette-summary p { margin: 5px 0; color: var(--ink-soft); line-height: 1.55; }
+.accessory-palette-summary small { color: var(--ink-soft); }
+.stored-photo-preview { margin: 10px 0 15px; }
+.stored-photo-row { display: flex; align-items: center; gap: 12px; }
+.stored-photo-row img { flex: 0 0 62px; width: 62px; height: 74px; object-fit: cover; border-radius: 4px; background: var(--surface-muted); }
+.stored-photo-row p { display: grid; gap: 4px; margin: 0; font-size: .82rem; }
+.stored-photo-row p strong { overflow-wrap: anywhere; }
+.stored-photo-row p span { color: var(--ink-soft); line-height: 1.5; }
+.walkthrough-dialog { width: min(610px, calc(100% - 24px)); padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,.18); }
+.walkthrough-dialog::backdrop { background: rgba(12,16,14,.58); }
+.walkthrough-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 22px 24px 0; }
+.walkthrough-dialog-header p { margin: 0; color: var(--ink-soft); font-size: .82rem; }
+.walkthrough-dialog-content { min-height: 180px; padding: 28px 24px; }
+.walkthrough-dialog-content h2 { margin: 0 0 12px; font-size: 1.5rem; }
+.walkthrough-dialog-content p { margin: 0; max-width: 54ch; color: var(--ink-soft); line-height: 1.75; }
+.walkthrough-dialog-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 24px 22px; border-top: 1px solid var(--line); }
+.walkthrough-dialog-actions > div { display: flex; gap: 8px; }
+.walkthrough-dialog-actions button { white-space: nowrap; }
+@media (max-width: 560px) {
+  .ensemble-tab { padding: 11px 13px; }
+  .accessory-empty-state { padding: 20px 16px; }
+  .walkthrough-dialog-header, .walkthrough-dialog-content, .walkthrough-dialog-actions { padding-left: 17px; padding-right: 17px; }
+  .walkthrough-dialog-actions { flex-wrap: wrap; }
+  .walkthrough-dialog-actions > div { margin-left: auto; }
+}
+
+.mystyle-shell.is-booting { visibility: hidden; }

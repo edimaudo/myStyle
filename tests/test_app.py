@@ -31,6 +31,72 @@ def signed_in(client: TestClient) -> str:
     return re.search(r'<meta name="csrf-token" content="([^"]+)"', app_page.text).group(1)
 
 
+
+def test_gender_preference_filters_clothing_recommendations(client):
+    csrf = signed_in(client)
+    base = {"country": "CA", "season": "fall", "climate": "variable", "budget": "any", "styleTags": [], "occasions": [], "colorScheme": "earth"}
+    women = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": {**base, "genderPreference": "women"}, "limit": 16}).json()
+    men = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": {**base, "genderPreference": "men"}, "limit": 16}).json()
+    women_ids = {item["id"] for item in women["recommendations"]}
+    men_ids = {item["id"] for item in men["recommendations"]}
+    assert "midi-dress" in women_ids and "mens-oxford-shirt" not in women_ids
+    assert "mens-oxford-shirt" in men_ids and "midi-dress" not in men_ids
+
+
+def test_accessories_require_skin_analysis_and_use_detected_colour_cues(client):
+    csrf = signed_in(client)
+    base = {"country": "CA", "season": "fall", "climate": "variable", "budget": "any", "genderPreference": "all", "colorScheme": "earth"}
+    before = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": base, "limit": 16}).json()
+    assert before["accessories"] == []
+    assert all(item["item_type"] == "clothing" for item in before["recommendations"])
+    after = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": {**base, "skinAnalysis": {"skin_color": "#b8795e"}}, "limit": 16}).json()
+    assert after["skin_palette_guide"]["family"] == "warm"
+    assert after["accessories"]
+    assert all(item["item_type"] == "accessory" for item in after["accessories"])
+    assert any(item["id"] == "crossbody-bag" for item in after["accessories"])
+    assert any("skin analysis" in item["recommendation_reason"].lower() for item in after["accessories"])
+
+
+def test_catalog_has_try_on_metadata_for_accessories_and_gender_tags():
+    ids = {item["id"]: item for item in ITEMS}
+    assert ids["crossbody-bag"]["item_type"] == "accessory"
+    assert ids["silk-scarf"]["try_on_kind"] == "scarf"
+    assert ids["structured-cap"]["try_on_kind"] == "hat"
+    assert ids["sneakers"]["try_on_kind"] == "shoes"
+    assert "women" in ids["midi-dress"]["gender_tags"]
+    assert "men" in ids["mens-oxford-shirt"]["gender_tags"]
+
+
+def test_profile_quiz_walkthrough_tabs_and_persistent_photos_are_wired(client):
+    signed_in(client)
+    html = client.get("/app").text
+    source = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()
+    assert 'id="profile-gender-preference"' in html
+    assert 'id="quiz-gender-preference"' in html
+    assert 'data-ensemble-tab="clothing"' in html and 'data-ensemble-tab="accessories"' in html
+    assert 'id="open-mystyle-walkthrough"' in html
+    assert 'id="walkthrough-previous"' in html and 'id="walkthrough-next"' in html and 'id="walkthrough-skip"' in html
+    assert 'id="skin-photo-memory"' in html and 'id="try-on-photo-memory"' in html
+    assert "await loadCachedPhotos();" in source
+    assert "state.cachedImages.skinAnalysis" in source and "state.cachedImages.tryOn" in source
+    assert "switchView(state.profile.hasCompletedQuiz ? 'discover' : 'quiz')" in source
+    assert "renderRecommendations(state.recommendations); renderSaved();" not in source
+    assert "el.focus?.({ preventScroll: true });" in source
+
+
+def test_accessory_try_on_requires_supported_kind_and_gender_before_provider_call(client):
+    csrf = signed_in(client)
+    from mystyle.main import try_on
+    response = client.post(
+        "/api/try-on",
+        headers={"X-CSRF-Token": csrf},
+        data={"item_image_url": "https://images.unsplash.com/photo-1548036328-c9fa89d128fa", "consent": "true", "item_type": "accessory", "accessory_kind": "bag", "gender": ""},
+        files={"photo": ("person.jpg", b"image bytes", "image/jpeg")},
+    )
+    assert response.status_code == 400
+    assert "gender option" in response.json()["detail"]
+    assert callable(try_on)
+
 def test_health_uses_mystyle_brand(client):
     response = client.get("/health")
     assert response.json() == {"status": "ok", "app": "myStyle"}
@@ -300,7 +366,7 @@ def test_app_ui_uses_selfie_only_for_skin_analysis(client):
     response = client.get("/app")
     html = response.text
     assert "Skin and facial colour analysis" in html
-    assert "After analysis, detected colour cues automatically guide Ensemble recommendations" in html
+    assert "Detected colour values guide your clothing palette and personalise accessories in Ensemble" in html
     assert "try-on-dialog" in html
     assert "Skin analysis" in html
     script = (__import__("pathlib").Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()

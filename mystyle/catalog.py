@@ -56,6 +56,9 @@ _ROWS = [
     ("pleated-skirt", "Pleated midi skirt", "Bottoms", "A movement-friendly piece that pairs with knits, tees or a fitted shirt.", ["romantic", "preppy", "classic", "trendy"], ["Navy", "Black", "Sage"], ["cool", "monochrome", "earth"], ["spring", "summer", "fall"], ["warm", "mild", "variable"], ["work", "event", "weekend"], 54, 73, "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?auto=format&fit=crop&w=900&q=85", "pleated midi skirt navy black sage"),
     ("weekend-hoodie", "Elevated everyday hoodie", "Layering", "A casual comfort piece that works under a shell or with structured trousers.", ["sporty", "streetwear", "casual", "minimal"], ["Grey", "Navy", "Olive"], ["cool", "earth", "neutral"], ["fall", "winter", "spring"], ["cold", "variable", "mild"], ["everyday", "weekend", "travel", "outdoors"], 48, 65, "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=900&q=85", "elevated heavyweight hoodie grey navy olive"),
     ("linen-shirt", "Linen button-down", "Tops", "A breathable-looking warm-weather staple worn open, tucked or relaxed.", ["classic", "minimal", "bohemian", "casual"], ["White", "Sky blue", "Sand"], ["cool", "earth", "pastel", "neutral"], ["spring", "summer"], ["warm", "mild"], ["everyday", "weekend", "travel", "work"], 44, 60, "https://images.unsplash.com/photo-1603252109303-2751441dd157?auto=format&fit=crop&w=900&q=85", "linen button down shirt white sky blue sand"),
+    ("silk-scarf", "Printed silk-blend scarf", "Accessories", "A lightweight accessory that brings a considered colour accent to coats and knitwear.", ["classic", "creative", "romantic", "bohemian"], ["Rust", "Olive", "Burgundy", "Navy"], ["earth", "jewel", "cool"], ["spring", "summer", "fall", "winter"], ["all"], ["everyday", "work", "travel", "event"], 32, 44, "https://images.unsplash.com/photo-1601924994987-69e26d50dc26?auto=format&fit=crop&w=900&q=85", "printed silk scarf rust olive burgundy"),
+    ("structured-cap", "Structured everyday cap", "Accessories", "A simple headwear option for casual days and travel.", ["casual", "sporty", "streetwear", "minimal"], ["Navy", "Olive", "Black", "Cream"], ["cool", "earth", "monochrome"], ["spring", "summer", "fall"], ["warm", "mild", "variable"], ["everyday", "weekend", "travel", "outdoors"], 26, 35, "https://images.unsplash.com/photo-1521369909029-2afed882baee?auto=format&fit=crop&w=900&q=85", "unisex structured baseball cap navy olive"),
+    ("mens-oxford-shirt", "Classic Oxford shirt", "Tops", "A versatile button-down with a clean collar and easy structure for work or weekends.", ["classic", "preppy", "workwear", "minimal"], ["White", "Sky blue", "Navy"], ["cool", "monochrome", "neutral"], ["spring", "summer", "fall"], ["warm", "mild", "variable"], ["work", "everyday", "event"], 48, 65, "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?auto=format&fit=crop&w=900&q=85", "men's classic oxford shirt white sky blue"),
 ]
 
 FIT_TAGS = {
@@ -77,6 +80,31 @@ ITEMS = [
     }
     for row in _ROWS
 ]
+
+# Gender tags are styling/catalogue descriptors, not assumptions about a person's identity.
+# Most pieces are shared; only explicitly gendered editorial concepts are restricted.
+WOMEN_ONLY = {"midi-dress", "pleated-skirt", "soft-blouse"}
+MEN_ONLY = {"mens-oxford-shirt"}
+ACCESSORY_TRY_ON_KINDS = {
+    "crossbody-bag": "bag", "silk-scarf": "scarf", "structured-cap": "hat",
+    "sneakers": "shoes", "ankle-boots": "shoes", "loafers": "shoes",
+}
+for item in ITEMS:
+    original_category = item["category"]
+    if original_category == "Shoes":
+        item["subcategory"] = "Shoes"
+        item["category"] = "Accessories"
+    if item["category"] == "Accessories":
+        item["item_type"] = "accessory"
+        item["try_on_kind"] = ACCESSORY_TRY_ON_KINDS.get(item["id"], "bag")
+    else:
+        item["item_type"] = "clothing"
+    if item["id"] in WOMEN_ONLY:
+        item["gender_tags"] = ["women"]
+    elif item["id"] in MEN_ONLY:
+        item["gender_tags"] = ["men"]
+    else:
+        item["gender_tags"] = ["all", "unisex"]
 
 
 def catalog_payload() -> dict:

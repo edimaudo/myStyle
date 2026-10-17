@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -280,6 +280,7 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
     query_tokens = _query_tokens(query)
     guide = palette_guide(profile.get("skinAnalysis"))
     preferred_fit = _normalise_text(profile.get("fitPreference") or "balanced")
+    gender_preference = _normalise_text(profile.get("genderPreference") or "all")
     guide_palettes = set((guide or {}).get("palette_ids") or [])
     guide_colour_terms = _guide_colour_terms(guide)
     skin_palette_is_primary = _normalise_text(profile.get("colorScheme") or "earth") == "selfie"
@@ -287,6 +288,11 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
     scored: list[tuple[float, dict[str, Any]]] = []
     for item in items:
         if item["id"] in excluded:
+            continue
+        gender_tags = set(item.get("gender_tags") or ["all"])
+        if gender_preference in {"women", "men"} and not ({gender_preference, "all", "unisex"} & gender_tags):
+            continue
+        if gender_preference == "unisex" and not ({"unisex", "all"} & gender_tags):
             continue
         # This is a seasonal edit, not a year-round catalogue sorted by a seasonal score.
         # Omit items not marked for the selected North American season.
@@ -304,10 +310,14 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
         searchable = _normalise_text(" ".join([
             item.get("name", ""), item.get("category", ""), item.get("description", ""),
             *item.get("style_tags", []), *item.get("colors", []), *item.get("palettes", []),
-            *item.get("seasons", []), *item.get("occasions", []), item.get("shop_query", ""),
+            *item.get("seasons", []), *item.get("occasions", []), item.get("shop_query", ""), item.get("subcategory", ""), *item.get("gender_tags", []),
         ]))
         searchable_tokens = set(re.findall(r"[a-z0-9]+", searchable))
         score = 1.0
+        if gender_preference in {"women", "men"} and gender_preference in gender_tags:
+            score += 2.0
+        elif gender_preference == "unisex" and "unisex" in gender_tags:
+            score += 2.0
         score += 4.0 * len(style_tags & tags)
         score += 3.0 * len(occasions & item_occasions)
         score += 4.5 if scheme_ids & item_palettes else 0.0
@@ -392,7 +402,7 @@ async def gemini_rank_items(profile: dict[str, Any], query: str, items: list[dic
     try:
         from google import genai
         allowed = [{
-            "id": i["id"], "name": i["name"], "category": i["category"],
+            "id": i["id"], "name": i["name"], "category": i["category"], "gender_tags": i.get("gender_tags", ["all"]),
             "tags": i["style_tags"], "colours": i["colors"], "palettes": i.get("palettes", []),
             "seasons": i["seasons"], "occasions": i["occasions"],
         } for i in items]
@@ -407,7 +417,7 @@ async def gemini_rank_items(profile: dict[str, Any], query: str, items: list[dic
         prompt = (
             "You are the product ranking engine for myStyle, a North American personal-styling app. "
             "Rank only the supplied style concepts. Never invent items, brands, retailer inventory, exact product prices, "
-            "availability, or claims about the user's body. Respect the provided season, budget, colour scheme and style preferences. "
+            "availability, or claims about the user's body. Respect the provided gender preference, season, budget, colour scheme and style preferences. "
             "When a skin_palette_guide is present, use its palette_ids and colour suggestions as a meaningful styling signal. "
             "If colorScheme is 'selfie', prioritize compatibility with that guide among items that otherwise fit the user's style, "
             "occasion, season and budget. Treat the guide as optional inspiration, not a rule, and do not infer identity or body traits. "
@@ -524,14 +534,16 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
     profile = body.profile
     season = current_season(profile)
     currency, price_field = _country_currency(profile)
-    target_price_label = "budget target" if currency == "CAD" else "budget target"
-    all_ranked = rank_items(profile, ITEMS, limit=len(ITEMS), query=body.query)
+    clothing_catalog = [item for item in ITEMS if item.get("item_type") != "accessory"]
+    accessory_catalog = [item for item in ITEMS if item.get("item_type") == "accessory"]
+    clothing_ranked = rank_items(profile, clothing_catalog, limit=len(clothing_catalog), query=body.query)
+
+    # Clothing can use the optional AI reranker after deterministic safety filtering.
     ai = None
-    if GEMINI_API_KEY and all_ranked:
+    if GEMINI_API_KEY and clothing_ranked:
         try:
-            # Only rerank the already filtered catalogue. Gemini cannot add items or bypass budget/season exclusions.
             ai = await asyncio.wait_for(
-                gemini_rank_items(profile, body.query, all_ranked),
+                gemini_rank_items(profile, body.query, clothing_ranked),
                 timeout=RECOMMENDATION_AI_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
@@ -539,14 +551,24 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         except Exception:
             logger.exception("Gemini personal styling request failed; using deterministic matching")
     if ai:
-        by_id = {item["id"]: item for item in all_ranked}
+        by_id = {item["id"]: item for item in clothing_ranked}
         ordered = [by_id[i] for i in ai["item_ids"] if i in by_id]
-        ordered.extend(item for item in all_ranked if item["id"] not in {x["id"] for x in ordered})
-        all_ranked = ordered
+        ordered.extend(item for item in clothing_ranked if item["id"] not in {x["id"] for x in ordered})
+        clothing_ranked = ordered
+
     guide = palette_guide(profile.get("skinAnalysis"))
+    accessory_ranked: list[dict[str, Any]] = []
+    if guide:
+        # Accessories are selected from the detected skin-analysis colour cues even if a
+        # user has separately chosen a clothing palette; user budget/season/gender still apply.
+        accessory_profile = {**profile, "colorScheme": "selfie"}
+        accessory_ranked = rank_items(accessory_profile, accessory_catalog, limit=len(accessory_catalog), query=body.query)
+
     return {
-        "recommendations": all_ranked[:body.limit],
-        "count": len(all_ranked[:body.limit]),
+        "recommendations": clothing_ranked[:body.limit],
+        "accessories": accessory_ranked[:max(8, body.limit)] if guide else [],
+        "count": len(clothing_ranked[:body.limit]),
+        "accessory_count": len(accessory_ranked[:max(8, body.limit)]) if guide else 0,
         "season": season,
         "season_label": SEASON_LABELS[season],
         "climate": _normalise_text(profile.get("climate") or "variable"),
@@ -556,7 +578,7 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         "source": "gemini" if ai else "profile-ranker",
         "ai_status": "used" if ai else ("fallback" if GEMINI_API_KEY else "not_configured"),
         "model": GEMINI_MODEL if ai else None,
-        "explanation": (ai or {}).get("explanation") or f"Ranked {len(all_ranked)} style concepts against your palette, fit preferences, budget, lifestyle and {SEASON_LABELS[season].lower()} season.",
+        "explanation": (ai or {}).get("explanation") or f"Ranked {len(clothing_ranked)} clothing concepts against your gender preference, palette, fit preferences, budget, lifestyle and {SEASON_LABELS[season].lower()} season.",
         "skin_palette_guide": guide,
         "catalogue_note": "Cards are curated style concepts with editorial inspiration images and illustrative budget targets—not live retailer listings. Shop links open searches for similar items; verify current price, size and availability with the retailer.",
     }
@@ -571,6 +593,8 @@ async def color_analysis(request: Request, photo: UploadFile = File(...), consen
     if content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=415, detail="Use a JPG or PNG selfie.")
     photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
+    if not photo_bytes or len(photo_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Choose a non-empty selfie smaller than 9.5 MB.")
     file_id = await upload_image_to_yce(photo_bytes, photo.filename or "mystyle-skin-analysis.jpg", content_type)
     payload = await create_yce_color_task(file_id)
     try:
@@ -581,8 +605,16 @@ async def color_analysis(request: Request, photo: UploadFile = File(...), consen
 
 
 @app.post("/api/try-on")
-async def try_on(request: Request, photo: UploadFile = File(...), item_image_url: str = Form(...), consent: bool = Form(...)):
-    """Run YouCam Clothes V4 using the user's photo and a catalogue style image."""
+async def try_on(
+    request: Request,
+    photo: UploadFile = File(...),
+    item_image_url: str = Form(...),
+    consent: bool = Form(...),
+    item_type: str = Form("clothing"),
+    accessory_kind: str = Form(""),
+    gender: str = Form(""),
+):
+    """Run YouCam clothing or supported accessory virtual try-on."""
     require_session(request)
     if not consent:
         raise HTTPException(status_code=400, detail="Consent is required before sending photos to YouCam.")
@@ -592,6 +624,18 @@ async def try_on(request: Request, photo: UploadFile = File(...), item_image_url
     photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
     if not photo_bytes or len(photo_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Choose a photo smaller than 9.5 MB.")
+
+    provider_task_kind = "cloth-v4"
+    if item_type == "accessory":
+        allowed_accessories = {"bag", "hat", "scarf", "shoes"}
+        if accessory_kind not in allowed_accessories:
+            raise HTTPException(status_code=400, detail="This accessory does not have a supported virtual try-on workflow yet.")
+        if gender not in {"female", "male"}:
+            raise HTTPException(status_code=400, detail="Choose a gender option for this accessory try-on.")
+        provider_task_kind = accessory_kind
+    elif item_type != "clothing":
+        raise HTTPException(status_code=400, detail="Choose a clothing or supported accessory item.")
+
     parsed = urlparse(item_image_url)
     if parsed.scheme != "https" or parsed.hostname not in {"images.unsplash.com", "images.pexels.com"}:
         raise HTTPException(status_code=400, detail="The selected style image is not from an approved image source.")
@@ -603,19 +647,26 @@ async def try_on(request: Request, photo: UploadFile = File(...), item_image_url
         style_type = image_response.headers.get("content-type", "image/jpeg").split(";")[0].lower()
     if style_type not in ALLOWED_IMAGE_TYPES or not style_bytes or len(style_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=415, detail="The selected style image is not a supported JPG or PNG under 9.5 MB.")
+
     person_id = await upload_image_to_yce(photo_bytes, photo.filename or "mystyle-person.jpg", content_type)
     style_id = await upload_image_to_yce(style_bytes, "mystyle-style-reference.jpg", style_type)
+    task_body: dict[str, Any] = {"src_file_id": person_id, "ref_file_id": style_id}
+    if provider_task_kind == "cloth-v4":
+        task_body["garment_category"] = "auto"
+    else:
+        # YouCam's dedicated accessory endpoints (bag, hat, scarf and shoes) require a gender parameter.
+        task_body["gender"] = gender
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(f"{YCE_BASE}/s2s/v2.0/task/cloth-v4", headers=yce_headers(), json={"src_file_id": person_id, "ref_file_id": style_id, "garment_category": "auto"})
+        response = await client.post(f"{YCE_BASE}/s2s/v2.0/task/{provider_task_kind}", headers=yce_headers(), json=task_body)
         if response.is_error:
-            logger.warning("YouCam Clothes V4 task creation failed: %s", response.status_code)
+            logger.warning("YouCam %s task creation failed: %s", provider_task_kind, response.status_code)
             raise HTTPException(status_code=502, detail="YouCam could not start the virtual try-on. Check API access and remaining units.")
         try:
             payload = response.json()
             task_id = payload["data"]["task_id"]
         except (ValueError, KeyError, TypeError) as exc:
             raise HTTPException(status_code=502, detail="YouCam returned an unexpected try-on task response.") from exc
-    return {"task_id": str(task_id), "task_kind": "try-on", "message": "YouCam is generating your virtual try-on."}
+    return {"task_id": str(task_id), "task_kind": "try-on", "provider_task_kind": provider_task_kind, "message": "YouCam is generating your virtual try-on."}
 
 
 def find_output_image_url(value: Any) -> str | None:
@@ -636,12 +687,14 @@ def find_output_image_url(value: Any) -> str | None:
 
 
 @app.get("/api/tasks/try-on/{task_id:path}")
-async def try_on_task_status(task_id: str, request: Request):
+async def try_on_task_status(task_id: str, request: Request, kind: str = Query(default="cloth-v4")):
     require_session(request)
     if not task_id or len(task_id) > 512 or ".." in task_id:
         raise HTTPException(status_code=400, detail="Invalid task ID.")
+    if kind not in {"cloth-v4", "bag", "hat", "scarf", "shoes"}:
+        raise HTTPException(status_code=400, detail="Invalid try-on task type.")
     async with httpx.AsyncClient(timeout=25.0) as client:
-        response = await client.get(f"{YCE_BASE}/s2s/v2.0/task/cloth-v4/{task_id}", headers=yce_headers())
+        response = await client.get(f"{YCE_BASE}/s2s/v2.0/task/{kind}/{task_id}", headers=yce_headers())
         if response.is_error:
             raise HTTPException(status_code=502, detail="Could not retrieve the YouCam try-on status. Retry in a moment.")
         try:
@@ -649,7 +702,7 @@ async def try_on_task_status(task_id: str, request: Request):
         except ValueError as exc:
             raise HTTPException(status_code=502, detail="YouCam returned an unexpected try-on status response.") from exc
     status = extract_task_status(payload)
-    result: dict[str, Any] = {"status": status, "task_kind": "try-on"}
+    result: dict[str, Any] = {"status": status, "task_kind": "try-on", "provider_task_kind": kind}
     if status == "error":
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
         result["message"] = data.get("error_message") or payload.get("error_message") or "YouCam could not complete this virtual try-on."

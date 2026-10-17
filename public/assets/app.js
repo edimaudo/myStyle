@@ -2,11 +2,11 @@
   'use strict';
 
   const DB_NAME = 'mystyle-db';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const PROFILE_KEY = 'my-profile';
   const SETTINGS_KEY = 'display-settings';
   const DEFAULT_PROFILE = {
-    displayName: 'myStyle Member', country: 'CA', city: 'Toronto', region: 'Ontario',
+    displayName: 'myStyle Member', country: 'CA', city: 'Toronto', region: 'Ontario', genderPreference: 'all', hasCompletedQuiz: false,
     season: 'auto', climate: 'variable', budget: 100, fitPreference: 'balanced',
     sizeTop: '', sizeBottom: '', sizeShoe: '', notes: '',
     styleTags: ['classic', 'casual'], occasions: ['everyday', 'work'],
@@ -22,7 +22,7 @@
   const state = {
     db: null, profile: structuredClone(DEFAULT_PROFILE), settings: { theme: 'light', fontSize: 'medium' },
     catalog: { items: [], palettes: [], styles: [], occasions: [] }, config: {},
-    recommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', colorPreviewUrl: null, recommendationsLoading: false, queuedRecommendation: null
+    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, queuedRecommendation: null, activeEnsembleTab: 'clothing', cachedImages: { skinAnalysis: null, tryOn: null }, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, walkthroughStep: 0
   };
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -38,6 +38,7 @@
         const db = request.result;
         if (!db.objectStoreNames.contains('profile')) db.createObjectStore('profile', { keyPath: 'key' });
         if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'key' });
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error('Could not open your local profile.'));
@@ -60,6 +61,12 @@
     if (profileRow?.value) {
       state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
       const stored = profileRow.value;
+      // Existing local profiles belong to returning users. New profiles have no row and
+      // remain routed through the quiz until they submit it.
+      if (stored.hasCompletedQuiz === undefined) {
+        state.profile.hasCompletedQuiz = true;
+        await persistProfile();
+      }
       const hasSavedSkinColour = typeof state.profile.skinAnalysis?.skin_color === 'string'
         && /^#[0-9a-f]{6}$/i.test(state.profile.skinAnalysis.skin_color);
       // Migrate profiles created before skin analysis was wired into the palette choice.
@@ -82,6 +89,37 @@
     await dbRequest('profile', 'put', { key: PROFILE_KEY, value: state.profile, updatedAt: new Date().toISOString() });
   }
   async function saveSettings() { await dbRequest('settings', 'put', { key: SETTINGS_KEY, value: state.settings }); }
+
+  async function rememberPhoto(key, file) {
+    if (!file || !['image/jpeg', 'image/png'].includes(file.type)) throw new Error('Choose a JPG or PNG image.');
+    if (!file.size || file.size > 9_500_000) throw new Error('Choose an image smaller than 9.5 MB.');
+    const blob = file.slice(0, file.size, file.type);
+    await dbRequest('images', 'put', { key, blob, name: file.name || `${key}.jpg`, type: file.type, lastModified: file.lastModified || Date.now(), updatedAt: new Date().toISOString() });
+    state.cachedImages[key] = file;
+    renderStoredPhoto(key);
+  }
+
+  async function loadCachedPhotos() {
+    for (const key of ['skinAnalysis', 'tryOn']) {
+      const row = await dbRequest('images', 'get', key);
+      if (row?.blob) state.cachedImages[key] = new File([row.blob], row.name || `${key}.jpg`, { type: row.type || row.blob.type || 'image/jpeg', lastModified: row.lastModified || Date.now() });
+      renderStoredPhoto(key);
+    }
+  }
+
+  function renderStoredPhoto(key) {
+    const target = $(`#${key === 'skinAnalysis' ? 'skin-photo-memory' : 'try-on-photo-memory'}`);
+    const file = state.cachedImages[key];
+    if (!target) return;
+    if (state.photoPreviewUrls[key]) URL.revokeObjectURL(state.photoPreviewUrls[key]);
+    state.photoPreviewUrls[key] = null;
+    if (!file) { target.replaceChildren(); return; }
+    const url = URL.createObjectURL(file);
+    state.photoPreviewUrls[key] = url;
+    const alt = key === 'skinAnalysis' ? 'Previously selected selfie' : 'Previously selected virtual try-on photo';
+    const message = key === 'skinAnalysis' ? 'Saved selfie ready for skin analysis. It will be reused unless you choose another image.' : 'Saved try-on photo ready. It will be reused unless you choose another image.';
+    target.innerHTML = `<div class="stored-photo-row"><img src="${url}" alt="${alt}"><p><strong>${escapeHTML(file.name || 'Saved photo')}</strong><span>${escapeHTML(message)}</span></p></div>`;
+  }
 
   function applySettings() {
     document.documentElement.dataset.theme = state.settings.theme || 'light';
@@ -106,7 +144,7 @@
     el.textContent = message;
     el.className = `app-alert${type === 'error' ? ' is-error' : type === 'good' ? ' is-good' : ''}`;
     el.hidden = false;
-    el.focus?.();
+    el.focus?.({ preventScroll: true });
     window.clearTimeout(showAlert.timeout);
     showAlert.timeout = window.setTimeout(() => { el.hidden = true; }, 7500);
   }
@@ -170,6 +208,8 @@
     const setValue = (selector, value, fallback = '') => { const el = $(selector); if (el) el.value = value ?? fallback; };
     setValue('#display-name', state.profile.displayName, 'myStyle Member');
     setValue('#profile-country', state.profile.country, 'CA');
+    setValue('#profile-gender-preference', state.profile.genderPreference, 'all');
+    setValue('#quiz-gender-preference', state.profile.genderPreference, 'all');
     setValue('#profile-city', state.profile.city);
     setValue('#profile-region', state.profile.region);
     setValue('#profile-season', state.profile.season, 'auto');
@@ -292,6 +332,49 @@
     bindStyleImages(grid);
   }
 
+  function renderAccessories(items) {
+    const grid = $('#accessory-grid');
+    const empty = $('#accessory-empty-state');
+    const status = $('#accessory-status');
+    const summary = $('#accessory-palette-summary');
+    const guide = skinPaletteGuide(state.profile.skinAnalysis);
+    if (!grid || !empty) return;
+    if (!guide) {
+      empty.hidden = false;
+      grid.hidden = true;
+      grid.replaceChildren();
+      if (summary) summary.hidden = true;
+      if (status) status.textContent = 'Complete skin analysis to personalise accessories.';
+      return;
+    }
+    empty.hidden = true;
+    grid.hidden = false;
+    if (summary) {
+      const colour = state.profile.skinAnalysis?.skin_color || '';
+      summary.hidden = false;
+      summary.innerHTML = `<span class="accessory-skin-swatch" style="background:${escapeHTML(colour)}"></span><div><strong>${escapeHTML(guide.label)}</strong><p>Skin colour detected: ${escapeHTML(colour)}. Suggested accent colours: ${escapeHTML(guide.colors.join(', '))}.</p><small>Colour suggestions are approximate styling inspiration, not rules.</small></div>`;
+    }
+    if (status) status.textContent = items.length ? `${items.length} accessory ideas matched to your skin-analysis colour cues` : 'No accessories match the current season or budget. Adjust your profile and refresh.';
+    if (!items.length) {
+      grid.innerHTML = '<div class="no-results"><strong>No accessory matches found.</strong><p>Try adjusting your budget or season in Style profile.</p></div>';
+      return;
+    }
+    grid.innerHTML = items.map(item => renderStyleCard(item, false)).join('');
+    bindStyleImages(grid);
+  }
+
+  function switchEnsembleTab(tab) {
+    state.activeEnsembleTab = tab === 'accessories' ? 'accessories' : 'clothing';
+    $$('[data-ensemble-tab]').forEach(button => {
+      const active = button.dataset.ensembleTab === state.activeEnsembleTab;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    $$('[data-ensemble-panel]').forEach(panel => { panel.hidden = panel.dataset.ensemblePanel !== state.activeEnsembleTab; });
+    if (state.activeEnsembleTab === 'accessories') renderAccessories(state.accessoryRecommendations);
+  }
+
   function renderSaved() {
     const grid = $('#saved-grid');
     if (!grid) return;
@@ -347,14 +430,37 @@
     }
   }
 
-  function setSkinPhotoPreview() {
-    const target = $('#skin-analysis-preview');
-    const file = $('#skin-photo')?.files?.[0];
-    if (!target || !file || !['image/jpeg', 'image/png'].includes(file.type)) return;
-    if (state.colorPreviewUrl) URL.revokeObjectURL(state.colorPreviewUrl);
-    state.colorPreviewUrl = URL.createObjectURL(file);
-    target.innerHTML = `<div class="skin-local-preview"><img src="${state.colorPreviewUrl}" alt="Local preview of the selfie for colour analysis"><div><strong>Selfie selected</strong><p>This preview stays in this page. The image is sent only when you start analysis and consent.</p></div></div>`;
+  async function validateImageDimensions(file) {
+    const dimensions = await getImageDimensions(file);
+    if (dimensions.width < 320 || dimensions.height < 320) throw new Error('The image must be at least 320 × 320 pixels. Choose a larger photo.');
+    if (Math.max(dimensions.width, dimensions.height) > 4096) throw new Error('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.');
+    return dimensions;
   }
+
+  async function setSkinPhotoPreview() {
+    const file = $('#skin-photo')?.files?.[0];
+    if (!file) return;
+    try {
+      await validateImageDimensions(file);
+      await rememberPhoto('skinAnalysis', file);
+    } catch (error) {
+      showAlert(error.message, 'error');
+      $('#skin-photo').value = '';
+    }
+  }
+
+  async function setTryOnPhotoPreview() {
+    const file = $('#try-on-photo')?.files?.[0];
+    if (!file) return;
+    try {
+      await validateImageDimensions(file);
+      await rememberPhoto('tryOn', file);
+    } catch (error) {
+      showAlert(error.message, 'error');
+      $('#try-on-photo').value = '';
+    }
+  }
+
 
   function getImageDimensions(file) {
     return new Promise((resolve, reject) => {
@@ -372,9 +478,9 @@
     });
   }
 
-  async function pollColorTask(taskId, maxAttempts = 48) {
+  async function pollColorTask(taskId, maxAttempts = 30) {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise(resolve => window.setTimeout(resolve, 5000));
+      await new Promise(resolve => window.setTimeout(resolve, 3000));
       const result = await apiFetch(`/api/tasks/color/${encodeURIComponent(taskId)}`, { method: 'GET' });
       if (result.status === 'success' || result.status === 'error') return result;
       const button = $('#run-skin-analysis');
@@ -392,7 +498,8 @@
   }
 
   async function runSkinAnalysis() {
-    const photo = $('#skin-photo')?.files?.[0];
+    const selectedPhoto = $('#skin-photo')?.files?.[0];
+    const photo = selectedPhoto || state.cachedImages.skinAnalysis;
     if (!photo) { showAlert('Choose a front-facing JPG or PNG selfie first.', 'error'); return; }
     if (!$('#skin-consent')?.checked) { showAlert('Consent is required before sending the selfie to YouCam.', 'error'); return; }
     if (!state.config.youcam_configured) { showAlert('YouCam skin analysis is not configured on this deployment. Add YCE_API_KEY in environment variables. Your selfie has not been uploaded.', 'error'); return; }
@@ -409,6 +516,7 @@
       showAlert('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', 'error');
       return;
     }
+    if (selectedPhoto) { try { await rememberPhoto('skinAnalysis', selectedPhoto); } catch (error) { showAlert(error.message, 'error'); return; } }
     const button = $('#run-skin-analysis');
     button.disabled = true;
     button.textContent = 'Starting analysis…';
@@ -428,9 +536,6 @@
       renderSkinAnalysis(state.profile.skinAnalysis);
       renderPaletteSelect();
       const recommendationsUpdated = await requestRecommendations(state.lastQuery);
-      $('#skin-photo').value = '';
-      if (state.colorPreviewUrl) URL.revokeObjectURL(state.colorPreviewUrl);
-      state.colorPreviewUrl = null;
       if (recommendationsUpdated) {
         showAlert('Colour analysis complete. Its colour cues are now guiding Ensemble recommendations.', 'good');
       } else {
@@ -445,49 +550,87 @@
   }
 
   function openTryOn(itemId) {
-    const item = state.catalog.items.find(entry => entry.id === itemId) || state.recommendations.find(entry => entry.id === itemId);
+    const item = state.catalog.items.find(entry => entry.id === itemId) || state.recommendations.find(entry => entry.id === itemId) || state.accessoryRecommendations.find(entry => entry.id === itemId);
     if (!item) { showAlert('Could not find that style. Refresh recommendations and try again.', 'error'); return; }
+    const itemType = item.item_type || (item.category === 'Accessories' ? 'accessory' : 'clothing');
+    const tryOnKind = item.try_on_kind || 'clothing';
     $('#try-on-item-name').textContent = item.name;
     $('#try-on-item-image').src = item.image_url;
-    $('#try-on-item-image').alt = `Outfit reference for ${item.name}`;
+    $('#try-on-item-image').alt = `Reference image for ${item.name}`;
     $('#try-on-photo').value = '';
     $('#try-on-consent').checked = false;
     $('#try-on-result').replaceChildren();
+    const photoLabel = $('#try-on-photo-label');
+    const guidance = $('#try-on-reference-guidance');
+    const genderField = $('#try-on-gender-field');
+    const fitGender = state.profile.genderPreference === 'women' ? 'female' : state.profile.genderPreference === 'men' ? 'male' : '';
+    const guidanceByKind = {
+      clothing: ['Use a clear front-facing photo showing the body area this clothing covers.', 'For best results, use a front-facing photo showing the body area this piece covers.'],
+      bag: ['Use a front-facing upper-body or full-length photo with your torso visible.', 'The reference should show the bag clearly without obstruction.'],
+      hat: ['Use a front-facing photo with your entire head and shoulders visible.', 'The reference should show the hat clearly from the front.'],
+      scarf: ['Use a front-facing photo with your neck and shoulders visible.', 'The reference should show the scarf clearly.'],
+      shoes: ['Use a full-length or lower-body photo with both feet visible.', 'The reference should show the shoes clearly.']
+    };
+    const guidancePair = guidanceByKind[tryOnKind] || guidanceByKind.clothing;
+    if (photoLabel) photoLabel.innerHTML = `${escapeHTML(guidancePair[0])} <span class="required-marker">*</span>`;
+    if (guidance) guidance.textContent = guidancePair[1];
+    if (genderField) genderField.hidden = itemType !== 'accessory';
+    const genderSelect = $('#try-on-gender');
+    if (genderSelect) genderSelect.value = fitGender;
     const dialog = $('#try-on-dialog');
     dialog.dataset.itemImage = item.image_url;
     dialog.dataset.itemName = item.name;
+    dialog.dataset.itemType = itemType;
+    dialog.dataset.tryOnKind = tryOnKind;
+    renderStoredPhoto('tryOn');
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
   }
 
-  async function pollTryOnTask(taskId) {
-    for (let attempt = 0; attempt < 24; attempt++) {
-      await new Promise(resolve => window.setTimeout(resolve, 4000));
-      const result = await apiFetch(`/api/tasks/try-on/${encodeURIComponent(taskId)}`, { method: 'GET' });
+  async function pollTryOnTask(taskId, providerKind = 'cloth-v4') {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await new Promise(resolve => window.setTimeout(resolve, 3500));
+      const result = await apiFetch(`/api/tasks/try-on/${encodeURIComponent(taskId)}?kind=${encodeURIComponent(providerKind)}`, { method: 'GET' });
       if (result.status === 'success' || result.status === 'error') return result;
     }
-    throw new Error('The try-on is taking longer than expected. Check back in a moment.');
+    throw new Error('The try-on is taking longer than expected. You can retry without selecting your photo again.');
   }
 
   async function runTryOn() {
     const dialog = $('#try-on-dialog');
-    const photo = $('#try-on-photo')?.files?.[0];
-    if (!photo) { showAlert('Choose a full-length photo first.', 'error'); return; }
+    const selectedPhoto = $('#try-on-photo')?.files?.[0];
+    const photo = selectedPhoto || state.cachedImages.tryOn;
+    if (!photo) { showAlert('Choose a JPG or PNG photo first. Your last try-on photo will be reused automatically after the first upload.', 'error'); return; }
     if (!$('#try-on-consent')?.checked) { showAlert('Consent is required before sending photos to YouCam.', 'error'); return; }
     if (!state.config.youcam_configured) { showAlert('Virtual try-on is not configured on this deployment. Add YCE_API_KEY to enable it.', 'error'); return; }
     if (!['image/jpeg', 'image/png'].includes(photo.type) || !photo.size || photo.size > 9_500_000) { showAlert('Choose a JPG or PNG image smaller than 9.5 MB.', 'error'); return; }
+    let dimensions;
+    try { dimensions = await getImageDimensions(photo); }
+    catch (error) { showAlert(error.message, 'error'); return; }
+    if (dimensions.width < 320 || dimensions.height < 320 || Math.max(dimensions.width, dimensions.height) > 4096) {
+      showAlert('Use a photo with both sides at least 320 px and a longest side no greater than 4,096 px.', 'error'); return;
+    }
+    if (selectedPhoto) { try { await rememberPhoto('tryOn', selectedPhoto); } catch (error) { showAlert(error.message, 'error'); return; } }
+    const itemType = dialog.dataset.itemType || 'clothing';
+    const accessoryKind = dialog.dataset.tryOnKind || '';
+    const gender = $('#try-on-gender')?.value || '';
+    if (itemType === 'accessory' && !gender) { showAlert('Choose a gender option for this accessory try-on. You can use a different choice from your style profile.', 'error'); return; }
     const button = $('#run-try-on');
     const resultPanel = $('#try-on-result');
     button.disabled = true; button.textContent = 'Preparing try-on…';
-    resultPanel.textContent = 'Sending your photo and selected style to YouCam…';
+    resultPanel.textContent = 'Uploading your photo and reference image…';
     try {
       const form = new FormData();
-      form.append('photo', photo);
+      form.append('photo', photo, photo.name || 'mystyle-try-on.jpg');
       form.append('item_image_url', dialog.dataset.itemImage || '');
+      form.append('item_type', itemType);
+      form.append('accessory_kind', accessoryKind);
+      form.append('gender', gender);
       form.append('consent', 'true');
       const task = await apiFetch('/api/try-on', { method: 'POST', body: form });
       button.textContent = 'Generating…';
-      const completed = await pollTryOnTask(task.task_id);
+      resultPanel.textContent = 'YouCam is processing the try-on. You can keep this window open; your photo is saved locally for reuse.';
+      const completed = await pollTryOnTask(task.task_id, task.provider_task_kind || 'cloth-v4');
       if (completed.status === 'error') throw new Error(completed.message || 'YouCam could not complete this try-on.');
       resultPanel.replaceChildren();
       const message = document.createElement('p');
@@ -504,6 +647,42 @@
       showAlert(resultPanel.textContent, 'error');
     } finally { button.disabled = false; button.textContent = 'Generate try-on'; }
   }
+
+  const WALKTHROUGH_STEPS = [
+    { title: 'Welcome to myStyle', copy: 'Use this walkthrough to learn the main parts of the app. You can move back, skip, or finish at any time.', view: 'discover' },
+    { title: 'Style quiz', copy: 'Choose a style direction, occasions, colour palette, gender preference and budget. The answers create your starting recommendations.', view: 'quiz' },
+    { title: 'Ensemble: clothing', copy: 'Browse the Clothing tab, search for concepts, open similar-shopping searches, try on an item or save it for later.', view: 'discover', tab: 'clothing' },
+    { title: 'Ensemble: accessories', copy: 'After skin analysis, the Accessories tab shows bags, scarves, headwear and shoes ranked against detected colour cues.', view: 'discover', tab: 'accessories' },
+    { title: 'Skin analysis', copy: 'Upload a front-facing selfie and consent to YouCam processing. Detected colour values become visible here and guide accessories.', view: 'skin-analysis' },
+    { title: 'Style profile', copy: 'Adjust gender preference, region, season, fit, sizes, colour scheme and budget. Save changes to refresh recommendations.', view: 'profile' },
+    { title: 'Saved pieces and try-on', copy: 'Use the heart to keep ideas. Try on clothing or supported accessories with a separate try-on photo that myStyle remembers in this browser.', view: 'saved' }
+  ];
+
+  function showWalkthroughStep(index) {
+    state.walkthroughStep = Math.max(0, Math.min(index, WALKTHROUGH_STEPS.length - 1));
+    const step = WALKTHROUGH_STEPS[state.walkthroughStep];
+    $('#walkthrough-title').textContent = step.title;
+    $('#walkthrough-copy').textContent = step.copy;
+    $('#walkthrough-step-count').textContent = `Step ${state.walkthroughStep + 1} of ${WALKTHROUGH_STEPS.length}`;
+    $('#walkthrough-previous').disabled = state.walkthroughStep === 0;
+    $('#walkthrough-next').textContent = state.walkthroughStep === WALKTHROUGH_STEPS.length - 1 ? 'Finish' : 'Next';
+    if (step.view) switchView(step.view);
+    if (step.tab) switchEnsembleTab(step.tab);
+  }
+
+  function openWalkthrough() {
+    const dialog = $('#mystyle-walkthrough-dialog');
+    showWalkthroughStep(0);
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  }
+
+  function closeWalkthrough() {
+    const dialog = $('#mystyle-walkthrough-dialog');
+    if (typeof dialog.close === 'function') dialog.close();
+    else dialog.removeAttribute('open');
+  }
+
 
   async function requestRecommendations(query = '') {
     if (state.recommendationsLoading) {
@@ -539,9 +718,11 @@
       const result = await apiFetch('/api/recommendations', { method: 'POST', body: JSON.stringify({ profile: state.profile, query, limit: 8 }) });
       if (id !== state.requestId) return false;
       state.recommendations = result.recommendations || [];
+      state.accessoryRecommendations = result.accessories || [];
       updateSeasonDetails(result);
       if (status) status.textContent = state.recommendations.length ? `${state.recommendations.length} recommendations` : 'No matches found';
       renderRecommendations(state.recommendations);
+      renderAccessories(state.accessoryRecommendations);
       renderSaved();
       renderSkinAnalysis(state.profile.skinAnalysis);
       return true;
@@ -549,6 +730,7 @@
       if (id !== state.requestId) return false;
       if (status) status.textContent = 'Could not load recommendations';
       if (grid) grid.innerHTML = `<div class="no-results"><strong>We couldn't load recommendations.</strong><p>${escapeHTML(error.message)}</p><button class="button button-outline" type="button" id="retry-edit">Try again</button></div>`;
+      if (state.profile.skinAnalysis) renderAccessories(state.accessoryRecommendations);
       return false;
     } finally {
       state.recommendationsLoading = false;
@@ -587,6 +769,7 @@
     try {
       state.profile.displayName = $('#display-name')?.value.trim() || 'myStyle Member';
       state.profile.country = $('#profile-country')?.value || 'CA';
+      state.profile.genderPreference = $('#profile-gender-preference')?.value || 'all';
       state.profile.city = $('#profile-city')?.value.trim() || '';
       state.profile.region = $('#profile-region')?.value.trim() || '';
       state.profile.season = $('#profile-season')?.value || 'auto';
@@ -614,12 +797,14 @@
 
   async function submitQuiz(event) {
     event.preventDefault();
+    state.profile.genderPreference = $('#quiz-gender-preference')?.value || 'all';
     state.profile.styleTags = selectedValues('#quiz-style-choices input');
     state.profile.occasions = selectedValues('#quiz-occasion-choices input');
     state.profile.colorScheme = selectedValues('#quiz-palette-choices input')[0] || 'earth';
     state.profile.customColors = $('#quiz-custom-colors')?.value.trim() || '';
     const budget = $('#quiz-budget')?.value || 'any';
     state.profile.budget = budget === 'any' ? 'any' : Number(budget);
+    state.profile.hasCompletedQuiz = true;
     try {
       await persistProfile();
       renderProfileChoices();
@@ -641,6 +826,15 @@
     } catch (error) { showAlert(`Could not apply the colour scheme: ${error.message}`, 'error'); }
   }
 
+  function updateSaveControls(itemId) {
+    const saved = (state.profile.savedItemIds || []).includes(itemId);
+    $$('[data-save-item]').filter(button => button.dataset.saveItem === itemId).forEach(button => {
+      button.textContent = saved ? '♥' : '♡';
+      button.setAttribute('aria-pressed', String(saved));
+      button.setAttribute('aria-label', `${saved ? 'Remove from' : 'Save to'} my saved pieces`);
+    });
+  }
+
   async function toggleSaved(itemId) {
     const saved = new Set(state.profile.savedItemIds || []);
     const wasSaved = saved.has(itemId);
@@ -648,10 +842,12 @@
     state.profile.savedItemIds = [...saved];
     try {
       await persistProfile();
-      renderRecommendations(state.recommendations); renderSaved();
+      updateSaveControls(itemId);
+      renderSaved();
       showAlert(wasSaved ? 'Removed from your saved pieces.' : 'Piece saved to your shortlist.', 'good');
     } catch (error) { showAlert(`Could not update saved pieces: ${error.message}`, 'error'); }
   }
+
 
   async function markNotForMe(itemId) {
     state.profile.notForMeItemIds = [...new Set([...(state.profile.notForMeItemIds || []), itemId])];
@@ -681,6 +877,16 @@
       if (notForMe) { await markNotForMe(notForMe.dataset.notForMe); return; }
       if (event.target.closest('[data-reset-dislikes]')) { await resetDislikes(); return; }
       if (event.target.closest('#retry-edit')) { await requestRecommendations(state.lastQuery); }
+      const tabButton = event.target.closest('[data-ensemble-tab]');
+      if (tabButton) { switchEnsembleTab(tabButton.dataset.ensembleTab); return; }
+      if (event.target.closest('#open-mystyle-walkthrough')) { openWalkthrough(); return; }
+      if (event.target.closest('#walkthrough-skip') || event.target.closest('#walkthrough-close')) { closeWalkthrough(); return; }
+      if (event.target.closest('#walkthrough-previous')) { showWalkthroughStep(state.walkthroughStep - 1); return; }
+      if (event.target.closest('#walkthrough-next')) {
+        if (state.walkthroughStep >= WALKTHROUGH_STEPS.length - 1) closeWalkthrough();
+        else showWalkthroughStep(state.walkthroughStep + 1);
+        return;
+      }
     });
     $('.theme-toggle')?.addEventListener('click', async () => { state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark'; applySettings(); try { await saveSettings(); } catch (_) { /* display setting is still applied */ } });
     $$('[data-font]').forEach(button => button.addEventListener('click', async () => { state.settings.fontSize = button.dataset.font; applySettings(); try { await saveSettings(); } catch (_) { /* display setting is still applied */ } }));
@@ -693,6 +899,7 @@
     $('#style-search-form')?.addEventListener('submit', event => { event.preventDefault(); requestRecommendations($('#style-search')?.value.trim() || ''); });
     $('#clear-style-search')?.addEventListener('click', () => { $('#style-search').value = ''; requestRecommendations(''); });
     $('#skin-photo')?.addEventListener('change', setSkinPhotoPreview);
+    $('#try-on-photo')?.addEventListener('change', setTryOnPhotoPreview);
     $('#run-skin-analysis')?.addEventListener('click', runSkinAnalysis);
     $('#run-try-on')?.addEventListener('click', runTryOn);
   }
@@ -707,10 +914,13 @@
       state.config = config;
       state.db = await openDatabase();
       await loadLocalState();
+      await loadCachedPhotos();
       renderProfileChoices();
       renderSkinAnalysis(state.profile.skinAnalysis);
       updateSeasonDetails();
       renderSaved();
+      switchView(state.profile.hasCompletedQuiz ? 'discover' : 'quiz');
+      $('.mystyle-shell')?.classList.remove('is-booting');
       await requestRecommendations('');
       if (!state.config.youcam_configured) {
         const note = $('#skin-photo-help');
@@ -720,6 +930,7 @@
       showAlert(`${error.message} Refresh the page to retry loading your profile.`, 'error');
       const status = $('#recommendation-status');
       if (status) status.textContent = 'The style catalogue could not be loaded.';
+      $('.mystyle-shell')?.classList.remove('is-booting');
     }
   }
 
