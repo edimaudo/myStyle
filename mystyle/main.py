@@ -169,6 +169,19 @@ def _normalise_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").casefold()).strip()
 
 
+def _normalise_gender_preference(value: Any) -> str:
+    """Canonicalize gender values from new controls and older saved profiles."""
+    raw = _normalise_text(value)
+    aliases = {
+        "male": "men", "man": "men", "mens": "men", "men's": "men", "masculine": "men",
+        "female": "women", "woman": "women", "womens": "women", "women's": "women", "feminine": "women",
+        "gender neutral": "unisex", "gender-neutral": "unisex", "gender neutral / unisex": "unisex",
+        "nonbinary": "unisex", "non-binary": "unisex",
+        "no preference": "all", "any": "all", "everyone": "all", "": "all",
+    }
+    return aliases.get(raw, raw if raw in {"men", "women", "unisex", "all"} else "all")
+
+
 def current_season(profile: dict[str, Any]) -> str:
     value = _normalise_text(profile.get("season") or "auto")
     if value in SEASONS:
@@ -280,7 +293,7 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
     query_tokens = _query_tokens(query)
     guide = palette_guide(profile.get("skinAnalysis"))
     preferred_fit = _normalise_text(profile.get("fitPreference") or "balanced")
-    gender_preference = _normalise_text(profile.get("genderPreference") or "all")
+    gender_preference = _normalise_gender_preference(profile.get("genderPreference") or "all")
     guide_palettes = set((guide or {}).get("palette_ids") or [])
     guide_colour_terms = _guide_colour_terms(guide)
     skin_palette_is_primary = _normalise_text(profile.get("colorScheme") or "earth") == "selfie"
@@ -289,10 +302,12 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
     for item in items:
         if item["id"] in excluded:
             continue
-        gender_tags = set(item.get("gender_tags") or ["all"])
-        if gender_preference in {"women", "men"} and not ({gender_preference, "all", "unisex"} & gender_tags):
+        # Fail closed for a selected gender: only explicitly compatible catalogue
+        # records are eligible. Missing metadata must never default to unisex.
+        gender_tags = set(item.get("gender_tags") or [])
+        if gender_preference in {"women", "men"} and not ({gender_preference, "unisex"} & gender_tags):
             continue
-        if gender_preference == "unisex" and not ({"unisex", "all"} & gender_tags):
+        if gender_preference == "unisex" and "unisex" not in gender_tags:
             continue
         # This is a seasonal edit, not a year-round catalogue sorted by a seasonal score.
         # Omit items not marked for the selected North American season.
@@ -531,7 +546,8 @@ class RecommendationRequest(BaseModel):
 @app.post("/api/recommendations")
 async def api_recommendations(body: RecommendationRequest, request: Request):
     require_session(request)
-    profile = body.profile
+    # Canonicalize legacy values before ranking and before passing the profile to Gemini.
+    profile = {**body.profile, "genderPreference": _normalise_gender_preference(body.profile.get("genderPreference"))}
     season = current_season(profile)
     currency, price_field = _country_currency(profile)
     clothing_catalog = [item for item in ITEMS if item.get("item_type") != "accessory"]

@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mystyle import main
-from mystyle.catalog import ITEMS, PALETTES, STYLE_OPTIONS, OCCASIONS
+from mystyle.catalog import ITEMS, PALETTES, STYLE_OPTIONS, OCCASIONS, WOMEN_ONLY, MEN_ONLY, UNISEX_ITEMS
 
 
 @pytest.fixture()
@@ -41,6 +41,33 @@ def test_gender_preference_filters_clothing_recommendations(client):
     men_ids = {item["id"] for item in men["recommendations"]}
     assert "midi-dress" in women_ids and "mens-oxford-shirt" not in women_ids
     assert "mens-oxford-shirt" in men_ids and "midi-dress" not in men_ids
+    assert all(item["gender_tags"] != ["women"] for item in men["recommendations"])
+    assert all(item["gender_tags"] != ["men"] for item in women["recommendations"])
+
+
+def test_legacy_male_gender_value_filters_womenswear_and_accessories(client):
+    csrf = signed_in(client)
+    profile = {
+        "country": "CA", "season": "fall", "climate": "variable", "budget": "any",
+        "genderPreference": "male", "colorScheme": "earth", "skinAnalysis": {"skin_color": "#b8795e"},
+    }
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "limit": 16})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recommendations"]
+    assert all(item["id"] not in WOMEN_ONLY for item in payload["recommendations"])
+    assert all("women" not in item["gender_tags"] for item in payload["recommendations"])
+    assert payload["accessories"]
+    assert all(item["id"] not in WOMEN_ONLY for item in payload["accessories"])
+    assert all("women" not in item["gender_tags"] for item in payload["accessories"])
+    assert "mens-oxford-shirt" in {item["id"] for item in payload["recommendations"]}
+
+
+def test_gender_tags_are_explicit_and_match_all_catalogue_items():
+    catalogue_ids = {item["id"] for item in ITEMS}
+    assert catalogue_ids == WOMEN_ONLY | MEN_ONLY | UNISEX_ITEMS
+    for item in ITEMS:
+        assert item["gender_tags"] in (["women"], ["men"], ["unisex"])
 
 
 def test_accessories_require_skin_analysis_and_use_detected_colour_cues(client):
@@ -63,8 +90,9 @@ def test_catalog_has_try_on_metadata_for_accessories_and_gender_tags():
     assert ids["silk-scarf"]["try_on_kind"] == "scarf"
     assert ids["structured-cap"]["try_on_kind"] == "hat"
     assert ids["sneakers"]["try_on_kind"] == "shoes"
-    assert "women" in ids["midi-dress"]["gender_tags"]
-    assert "men" in ids["mens-oxford-shirt"]["gender_tags"]
+    assert ids["midi-dress"]["gender_tags"] == ["women"]
+    assert ids["mens-oxford-shirt"]["gender_tags"] == ["men"]
+    assert ids["relaxed-blazer"]["gender_tags"] == ["unisex"]
 
 
 def test_profile_quiz_walkthrough_tabs_and_persistent_photos_are_wired(client):
@@ -83,6 +111,15 @@ def test_profile_quiz_walkthrough_tabs_and_persistent_photos_are_wired(client):
     assert "renderRecommendations(state.recommendations); renderSaved();" not in source
     assert "el.focus?.({ preventScroll: true });" in source
 
+
+
+def test_legacy_gender_values_are_normalized_before_profile_submission():
+    source = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "function normalizeGenderPreference(value)" in source
+    assert "['men', 'male', 'man', 'mens'" in source
+    assert "const normalizedGender = normalizeGenderPreference(state.profile.genderPreference);" in source
+    assert "normalizeGenderPreference($('#profile-gender-preference')?.value" in source
+    assert "normalizeGenderPreference($('#quiz-gender-preference')?.value" in source
 
 def test_accessory_try_on_requires_supported_kind_and_gender_before_provider_call(client):
     csrf = signed_in(client)

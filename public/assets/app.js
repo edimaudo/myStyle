@@ -30,6 +30,14 @@
   const COUNTRY = () => state.profile.country === 'US' ? 'US' : 'CA';
   const CURRENCY = () => COUNTRY() === 'US' ? 'USD' : 'CAD';
 
+  function normalizeGenderPreference(value) {
+    const gender = String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (['men', 'male', 'man', 'mens', "men's", 'masculine'].includes(gender)) return 'men';
+    if (['women', 'female', 'woman', 'womens', "women's", 'feminine'].includes(gender)) return 'women';
+    if (['unisex', 'gender neutral', 'gender-neutral', 'nonbinary', 'non-binary'].includes(gender)) return 'unisex';
+    return 'all';
+  }
+
   function openDatabase() {
     return new Promise((resolve, reject) => {
       if (!('indexedDB' in window)) return reject(new Error('Local browser storage is not available.'));
@@ -61,6 +69,13 @@
     if (profileRow?.value) {
       state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
       const stored = profileRow.value;
+      // Old local profiles may store "male" / "female" while the current controls
+      // use "men" / "women". Normalize and persist so the UI and ranker agree.
+      const normalizedGender = normalizeGenderPreference(state.profile.genderPreference);
+      if (state.profile.genderPreference !== normalizedGender) {
+        state.profile.genderPreference = normalizedGender;
+        await persistProfile();
+      }
       // Existing local profiles belong to returning users. New profiles have no row and
       // remain routed through the quiz until they submit it.
       if (stored.hasCompletedQuiz === undefined) {
@@ -769,7 +784,7 @@
     try {
       state.profile.displayName = $('#display-name')?.value.trim() || 'myStyle Member';
       state.profile.country = $('#profile-country')?.value || 'CA';
-      state.profile.genderPreference = $('#profile-gender-preference')?.value || 'all';
+      state.profile.genderPreference = normalizeGenderPreference($('#profile-gender-preference')?.value || state.profile.genderPreference || 'all');
       state.profile.city = $('#profile-city')?.value.trim() || '';
       state.profile.region = $('#profile-region')?.value.trim() || '';
       state.profile.season = $('#profile-season')?.value || 'auto';
@@ -797,7 +812,7 @@
 
   async function submitQuiz(event) {
     event.preventDefault();
-    state.profile.genderPreference = $('#quiz-gender-preference')?.value || 'all';
+    state.profile.genderPreference = normalizeGenderPreference($('#quiz-gender-preference')?.value || state.profile.genderPreference || 'all');
     state.profile.styleTags = selectedValues('#quiz-style-choices input');
     state.profile.occasions = selectedValues('#quiz-occasion-choices input');
     state.profile.colorScheme = selectedValues('#quiz-palette-choices input')[0] || 'earth';

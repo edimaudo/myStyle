@@ -81,10 +81,21 @@ ITEMS = [
     for row in _ROWS
 ]
 
-# Gender tags are styling/catalogue descriptors, not assumptions about a person's identity.
-# Most pieces are shared; only explicitly gendered editorial concepts are restricted.
-WOMEN_ONLY = {"midi-dress", "pleated-skirt", "soft-blouse"}
-MEN_ONLY = {"mens-oxford-shirt"}
+# Gender tags describe the intended styling of each editorial concept, not a user's
+# identity. Every item is explicitly classified; items are never silently treated as
+# unisex merely because their catalogue record lacked a gender tag. This matters because
+# several source images are clearly womenswear editorial images even when the garment type
+# (for example, a coat or trousers) can be worn by anyone.
+WOMEN_ONLY = {
+    "soft-trench", "wide-leg-denim", "tailored-trousers", "linen-pants",
+    "midi-dress", "soft-cardigan", "wool-coat", "ankle-boots", "crossbody-bag",
+    "soft-blouse", "pleated-skirt",
+}
+MEN_ONLY = {"mens-oxford-shirt", "plaid-overshirt", "utility-jacket", "statement-shirt", "weekend-hoodie", "linen-shirt"}
+UNISEX_ITEMS = {
+    "relaxed-blazer", "cream-knit", "white-tee", "statement-knit", "rain-shell",
+    "sneakers", "loafers", "silk-scarf", "structured-cap",
+}
 ACCESSORY_TRY_ON_KINDS = {
     "crossbody-bag": "bag", "silk-scarf": "scarf", "structured-cap": "hat",
     "sneakers": "shoes", "ankle-boots": "shoes", "loafers": "shoes",
@@ -103,8 +114,10 @@ for item in ITEMS:
         item["gender_tags"] = ["women"]
     elif item["id"] in MEN_ONLY:
         item["gender_tags"] = ["men"]
+    elif item["id"] in UNISEX_ITEMS:
+        item["gender_tags"] = ["unisex"]
     else:
-        item["gender_tags"] = ["all", "unisex"]
+        raise ValueError(f"Catalogue item {item['id']!r} has no explicit gender classification")
 
 
 def catalog_payload() -> dict:
