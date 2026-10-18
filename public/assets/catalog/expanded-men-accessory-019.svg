@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of expanded-men-accessory-019">
+      <defs><clipPath id="clip-expanded-men-accessory-019"><rect x="150" y="90" width="340" height="360" rx="18"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="436" cy="155" r="116" fill="#27384f" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><ellipse cx="320" cy="285" rx="142" ry="88" fill="none" stroke="#27384f" stroke-width="22"/><circle cx="184" cy="260" r="7" fill="#27384f"/><circle cx="211" cy="280" r="7" fill="#27384f"/><circle cx="238" cy="260" r="7" fill="#27384f"/><circle cx="265" cy="280" r="7" fill="#27384f"/><circle cx="292" cy="260" r="7" fill="#27384f"/><circle cx="319" cy="280" r="7" fill="#27384f"/><circle cx="346" cy="260" r="7" fill="#27384f"/><circle cx="373" cy="280" r="7" fill="#27384f"/><circle cx="400" cy="260" r="7" fill="#27384f"/><circle cx="427" cy="280" r="7" fill="#27384f"/><circle cx="454" cy="260" r="7" fill="#27384f"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>
