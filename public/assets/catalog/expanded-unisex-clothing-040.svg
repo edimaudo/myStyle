@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of expanded-unisex-clothing-040">
+      <defs><clipPath id="clip-expanded-unisex-clothing-040"><path d="M205 150 L435 150 L420 325 L330 325 L318 250 L305 325 L220 325 Z"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="448" cy="155" r="116" fill="#91bad3" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><path id="shape" d="M205 150 L435 150 L420 325 L330 325 L318 250 L305 325 L220 325 Z" fill="#91bad3" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/><path d="M320 145 L320 254" stroke="#91bad3" stroke-width="5" opacity=".9"/><path d="M232 172 L232 395 M408 172 L408 395" stroke="#91bad3" stroke-width="3" opacity=".7"/><path d="M225 152 L415 152" stroke="#91bad3" stroke-width="9"/><g clip-path="url(#clip-expanded-unisex-clothing-040)"><path d="M291 287 l0 23 M299 287 l0 23" fill="none" stroke="#37342f" stroke-width="2.5"/></g><path d="M225 152 L415 152 M320 153 L320 240" fill="none" stroke="#37342f" stroke-width="3"/><path d="M205 150 L435 150 L420 325 L330 325 L318 250 L305 325 L220 325 Z" fill="none" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>
