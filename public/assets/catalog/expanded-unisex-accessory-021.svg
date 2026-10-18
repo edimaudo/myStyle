@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of expanded-unisex-accessory-021">
+      <defs><clipPath id="clip-expanded-unisex-accessory-021"><rect x="150" y="90" width="340" height="360" rx="18"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="460" cy="155" r="116" fill="#91bad3" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><path d="M260 235 C260 135 380 135 380 235" fill="none" stroke="#37342f" stroke-width="20" stroke-linecap="round"/><path d="M260 235 C260 135 380 135 380 235" fill="none" stroke="#91bad3" stroke-width="11" stroke-linecap="round"/><path id="shape" d="M205 237 Q205 225 232 225 L408 225 Q435 225 435 250 L420 405 Q418 420 400 420 L240 420 Q222 420 220 402 Z" fill="#91bad3" stroke="#37342f" stroke-width="5" stroke-linejoin="round"/><path d="M240 300 L400 300" stroke="#91bad3" stroke-width="5" opacity=".8"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>
