@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of expanded-men-clothing-029">
+      <defs><clipPath id="clip-expanded-men-clothing-029"><path d="M268 145 L372 145 L388 240 L450 450 Q320 455 190 450 L252 240 Z"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="508" cy="155" r="116" fill="#27384f" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><path id="shape" d="M268 145 L372 145 L388 240 L450 450 Q320 455 190 450 L252 240 Z" fill="#c5b6db" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/><path d="M273 150 L320 200 L367 150" fill="none" stroke="#27384f" stroke-width="8"/><path d="M265 286 Q320 300 375 286" stroke="#27384f" stroke-width="5" opacity=".8"/><g clip-path="url(#clip-expanded-men-clothing-029)"><path d="M323 130 L410 135 L455 260 L390 275 L390 432 L325 432 Z" fill="#27384f" opacity=".96"/></g><g clip-path="url(#clip-expanded-men-clothing-029)"><path d="M291 248 l0 29 M299 248 l0 29" fill="none" stroke="#37342f" stroke-width="2.5"/></g><path d="M268 145 L372 145 L388 240 L450 450 Q320 455 190 450 L252 240 Z" fill="none" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>
