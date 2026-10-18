@@ -554,12 +554,15 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
     accessory_catalog = [item for item in ITEMS if item.get("item_type") == "accessory"]
     clothing_ranked = rank_items(profile, clothing_catalog, limit=len(clothing_catalog), query=body.query)
 
-    # Clothing can use the optional AI reranker after deterministic safety filtering.
+    # Keep AI re-ranking bounded as the built-in catalogue grows. The deterministic
+    # ranker first applies hard gender, season, and budget constraints to every item;
+    # Gemini only re-orders the top candidate set and cannot introduce new IDs.
     ai = None
-    if GEMINI_API_KEY and clothing_ranked:
+    ai_candidates = clothing_ranked[:40]
+    if GEMINI_API_KEY and ai_candidates:
         try:
             ai = await asyncio.wait_for(
-                gemini_rank_items(profile, body.query, clothing_ranked),
+                gemini_rank_items(profile, body.query, ai_candidates),
                 timeout=RECOMMENDATION_AI_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
@@ -567,9 +570,12 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         except Exception:
             logger.exception("Gemini personal styling request failed; using deterministic matching")
     if ai:
-        by_id = {item["id"]: item for item in clothing_ranked}
+        by_id = {item["id"]: item for item in ai_candidates}
         ordered = [by_id[i] for i in ai["item_ids"] if i in by_id]
-        ordered.extend(item for item in clothing_ranked if item["id"] not in {x["id"] for x in ordered})
+        ordered_ids = {item["id"] for item in ordered}
+        ordered.extend(item for item in ai_candidates if item["id"] not in ordered_ids)
+        ordered_ids = {item["id"] for item in ordered}
+        ordered.extend(item for item in clothing_ranked if item["id"] not in ordered_ids)
         clothing_ranked = ordered
 
     guide = palette_guide(profile.get("skinAnalysis"))
@@ -596,7 +602,7 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         "model": GEMINI_MODEL if ai else None,
         "explanation": (ai or {}).get("explanation") or f"Ranked {len(clothing_ranked)} clothing concepts against your gender preference, palette, fit preferences, budget, lifestyle and {SEASON_LABELS[season].lower()} season.",
         "skin_palette_guide": guide,
-        "catalogue_note": "Cards are curated style concepts with editorial inspiration images and illustrative budget targets—not live retailer listings. Shop links open searches for similar items; verify current price, size and availability with the retailer.",
+        "catalogue_note": "Built-in cards use locally generated illustrations matched to each concept's silhouette and colour metadata, not product photographs or live retailer listings. Budget targets are illustrative. Shop links search for similar items; verify current price, size and availability with the retailer.",
     }
 
 
@@ -624,7 +630,8 @@ async def color_analysis(request: Request, photo: UploadFile = File(...), consen
 async def try_on(
     request: Request,
     photo: UploadFile = File(...),
-    item_image_url: str = Form(...),
+    item_image_url: str = Form(default=""),
+    item_image: UploadFile | None = File(default=None),
     consent: bool = Form(...),
     item_type: str = Form("clothing"),
     accessory_kind: str = Form(""),
@@ -652,17 +659,27 @@ async def try_on(
     elif item_type != "clothing":
         raise HTTPException(status_code=400, detail="Choose a clothing or supported accessory item.")
 
-    parsed = urlparse(item_image_url)
-    if parsed.scheme != "https" or parsed.hostname not in {"images.unsplash.com", "images.pexels.com"}:
-        raise HTTPException(status_code=400, detail="The selected style image is not from an approved image source.")
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-        image_response = await client.get(item_image_url)
-        if image_response.is_error:
-            raise HTTPException(status_code=502, detail="Could not load the selected style image. Choose another style.")
-        style_bytes = image_response.content
-        style_type = image_response.headers.get("content-type", "image/jpeg").split(";")[0].lower()
-    if style_type not in ALLOWED_IMAGE_TYPES or not style_bytes or len(style_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=415, detail="The selected style image is not a supported JPG or PNG under 9.5 MB.")
+    if item_image is not None:
+        # Personal wardrobe photos are supplied directly by the browser and are never
+        # persisted by this endpoint. They are sent to YouCam only after user consent.
+        style_type = (item_image.content_type or "").lower()
+        if style_type not in ALLOWED_IMAGE_TYPES:
+            raise HTTPException(status_code=415, detail="Use a JPG or PNG photo for the wardrobe item.")
+        style_bytes = await item_image.read(MAX_UPLOAD_BYTES + 1)
+        if not style_bytes or len(style_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Choose a wardrobe photo smaller than 9.5 MB.")
+    else:
+        parsed = urlparse(item_image_url)
+        if parsed.scheme != "https" or parsed.hostname not in {"images.unsplash.com", "images.pexels.com"}:
+            raise HTTPException(status_code=400, detail="Choose a photo of your own wardrobe item to use virtual try-on.")
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            image_response = await client.get(item_image_url)
+            if image_response.is_error:
+                raise HTTPException(status_code=502, detail="Could not load the selected style image. Choose another style.")
+            style_bytes = image_response.content
+            style_type = image_response.headers.get("content-type", "image/jpeg").split(";")[0].lower()
+        if style_type not in ALLOWED_IMAGE_TYPES or not style_bytes or len(style_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=415, detail="The selected style image is not a supported JPG or PNG under 9.5 MB.")
 
     person_id = await upload_image_to_yce(photo_bytes, photo.filename or "mystyle-person.jpg", content_type)
     style_id = await upload_image_to_yce(style_bytes, "mystyle-style-reference.jpg", style_type)

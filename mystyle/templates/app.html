@@ -25,6 +25,7 @@
         <button class="side-nav-link" data-view="quiz" type="button">Style quiz</button>
         <button class="side-nav-link" data-view="profile" type="button">Style profile</button>
         <button class="side-nav-link" data-view="saved" type="button">Saved pieces <span class="nav-count" id="saved-count">0</span></button>
+        <button class="side-nav-link" data-view="wardrobe" type="button">My wardrobe <span class="nav-count" id="wardrobe-count">0</span></button>
         <button class="side-nav-link" id="open-mystyle-walkthrough" type="button">myStyle Walkthrough</button>
       </nav>
       <div class="sidebar-bottom">
@@ -49,6 +50,7 @@
 
         <div class="section-heading-row mystyle-section-heading"><div><h1>Ensemble</h1></div><div class="ensemble-heading-actions"><button class="button button-primary" id="refresh-edit" type="button">Refresh recommendations</button></div></div>
         <form id="style-search-form" class="search-panel mystyle-search-panel"><label class="sr-only" for="style-search">Search the style catalogue</label><input id="style-search" name="query" type="search" placeholder="Search for linen, tailoring, workwear, colour…" autocomplete="off"><button class="button button-outline" type="submit">Search styles</button><button class="text-link" type="button" id="clear-style-search">Clear</button></form>
+        <p class="catalogue-illustration-note">The built-in catalogue uses colour-accurate style illustrations, not product photographs. To try on an item, add a photo of your own clothing or supported accessory to My wardrobe.</p>
         <section class="skin-insight-banner" id="skin-insight-banner" hidden><div><h2 id="skin-insight-title">Skin analysis is informing Ensemble</h2><p id="skin-insight-copy"></p></div><button class="button button-outline" type="button" data-view="skin-analysis">Review analysis</button></section>
         <div class="ensemble-tabs" role="tablist" aria-label="Ensemble recommendations">
           <button type="button" role="tab" id="ensemble-tab-clothing" class="ensemble-tab is-active" data-ensemble-tab="clothing" aria-selected="true" aria-controls="ensemble-panel-clothing">Clothing</button>
@@ -117,6 +119,34 @@
         <div id="saved-empty" class="empty-state" hidden><h2>Your shortlist is empty.</h2><p>Save any piece from Ensemble to keep it here.</p><button class="button button-primary" data-view="discover" type="button">Explore Ensemble</button></div>
       </section>
 
+      <section class="app-view" id="view-wardrobe" data-view-panel="wardrobe" hidden>
+        <div class="welcome-row"><div><h1>My wardrobe</h1><p class="page-lede">Keep a private, local catalogue of clothes and accessories you already own. Use real item photos for supported virtual try-on.</p></div><button class="button button-outline" data-view="discover" type="button">Back to Ensemble</button></div>
+        <div class="wardrobe-layout">
+          <section class="profile-card wardrobe-add-card">
+            <div class="profile-card-heading"><div><h2>Add a piece</h2><p>Take or upload a clear photo, then add a few details to find it later.</p></div></div>
+            <form id="wardrobe-form" class="wardrobe-form">
+              <div class="form-field"><label for="wardrobe-item-name">Item name <span class="required-marker">*</span></label><input id="wardrobe-item-name" name="name" required maxlength="90" placeholder="e.g. Navy wool coat"></div>
+              <div class="form-field"><label for="wardrobe-photo">Photo <span class="required-marker">*</span></label><input id="wardrobe-photo" name="photo" type="file" accept="image/jpeg,image/png" required aria-describedby="wardrobe-photo-help"><p id="wardrobe-photo-help" class="small-note">JPG or PNG, under 9.5 MB and at least 160 × 160 pixels. Your photo stays in this browser.</p></div>
+              <div class="form-grid">
+                <div class="form-field"><label for="wardrobe-item-type">Type</label><select id="wardrobe-item-type" name="itemType"><option value="clothing">Clothing</option><option value="accessory">Accessory</option></select></div>
+                <div class="form-field"><label for="wardrobe-category">Category</label><select id="wardrobe-category" name="category"><option data-wardrobe-type="clothing" value="Tops">Tops</option><option data-wardrobe-type="clothing" value="Knitwear">Knitwear</option><option data-wardrobe-type="clothing" value="Outerwear">Outerwear</option><option data-wardrobe-type="clothing" value="Bottoms">Bottoms</option><option data-wardrobe-type="clothing" value="Denim">Denim</option><option data-wardrobe-type="clothing" value="Dresses">Dresses and jumpsuits</option><option data-wardrobe-type="clothing" value="Activewear">Activewear</option><option data-wardrobe-type="accessory" value="Bags">Bags</option><option data-wardrobe-type="accessory" value="Shoes">Shoes</option><option data-wardrobe-type="accessory" value="Scarves">Scarves</option><option data-wardrobe-type="accessory" value="Hats">Hats</option><option data-wardrobe-type="accessory" value="Belts">Belts</option><option data-wardrobe-type="accessory" value="Jewellery">Jewellery</option><option data-wardrobe-type="accessory" value="Watches">Watches</option><option data-wardrobe-type="accessory" value="Eyewear">Eyewear</option><option data-wardrobe-type="accessory" value="Other accessories">Other accessories</option></select></div>
+              </div>
+              <div class="form-field"><label for="wardrobe-colours">Colours <span class="optional-label">optional</span></label><input id="wardrobe-colours" name="colours" maxlength="120" placeholder="e.g. navy, white"></div>
+              <div class="form-field"><label for="wardrobe-season">Season <span class="optional-label">optional</span></label><select id="wardrobe-season" name="season"><option value="all">All seasons</option><option value="spring">Spring</option><option value="summer">Summer</option><option value="fall">Fall / autumn</option><option value="winter">Winter</option></select></div>
+              <div class="form-field"><label for="wardrobe-notes">Notes <span class="optional-label">optional</span></label><textarea id="wardrobe-notes" name="notes" rows="3" maxlength="400" placeholder="Fit, material, outfit ideas…"></textarea></div>
+              <button id="wardrobe-add-button" class="button button-primary button-large" type="submit">Add to My wardrobe</button>
+            </form>
+            <p class="wardrobe-privacy-note">Photos and item details are stored in this browser only. A photo is sent to YouCam only when you run a supported try-on and provide consent.</p>
+          </section>
+          <section class="wardrobe-library-section">
+            <div class="wardrobe-library-heading"><div><h2>Your pieces</h2><p id="wardrobe-count-copy" class="small-note" role="status" aria-live="polite">0 pieces in your wardrobe</p></div></div>
+            <div class="wardrobe-filter-tabs" role="group" aria-label="Filter your wardrobe"><button class="wardrobe-filter is-active" data-wardrobe-filter="all" aria-pressed="true" type="button">All</button><button class="wardrobe-filter" data-wardrobe-filter="clothing" aria-pressed="false" type="button">Clothing</button><button class="wardrobe-filter" data-wardrobe-filter="accessory" aria-pressed="false" type="button">Accessories</button></div>
+            <div id="wardrobe-grid" class="wardrobe-grid" hidden></div>
+            <div id="wardrobe-empty" class="empty-state"><h2>Your wardrobe is empty.</h2><p>Add your first clothing item or accessory to build a local repository.</p></div>
+          </section>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -125,6 +155,6 @@
     <div class="walkthrough-dialog-content"><h2 id="walkthrough-title">Welcome to myStyle</h2><p id="walkthrough-copy">This walkthrough shows you where to set preferences, get recommendations and save pieces.</p></div>
     <div class="walkthrough-dialog-actions"><button class="button button-outline" id="walkthrough-skip" type="button">Skip walkthrough</button><div><button class="button button-outline" id="walkthrough-previous" type="button" disabled>Back</button><button class="button button-primary" id="walkthrough-next" type="button">Next</button></div></div>
   </dialog>
-  <dialog id="try-on-dialog" class="try-on-dialog" aria-labelledby="try-on-title"><form method="dialog" class="dialog-header"><div><h2 id="try-on-title">Try on this style</h2><p id="try-on-item-name">Selected clothing idea</p></div><button class="dialog-close" value="cancel" aria-label="Close try-on">×</button></form><div class="dialog-content"><div class="try-on-reference"><img id="try-on-item-image" alt="Selected clothing inspiration"><p id="try-on-reference-guidance">Use this recommended style as the reference.</p></div><label for="try-on-photo" id="try-on-photo-label">Your front-facing photo <span class="required-marker">*</span></label><input id="try-on-photo" type="file" accept="image/jpeg,image/png" required><div id="try-on-photo-memory" class="stored-photo-preview" aria-live="polite"></div><p id="try-on-photo-help" class="small-note">Your last try-on photo is reused unless you choose a replacement.</p><div id="try-on-gender-field" class="form-field" hidden><label for="try-on-gender">Gender for accessory try-on</label><select id="try-on-gender"><option value="">Choose one</option><option value="female">Women's fit</option><option value="male">Men's fit</option></select></div><label class="consent-line"><input id="try-on-consent" type="checkbox"><span>I consent to sending my photo and this style image to YouCam for virtual try-on. <span class="required-marker">*</span></span></label><button id="run-try-on" class="button button-primary" type="button">Generate try-on</button><div id="try-on-result" aria-live="polite"></div></div></dialog>
+  <dialog id="try-on-dialog" class="try-on-dialog" aria-labelledby="try-on-title"><form method="dialog" class="dialog-header"><div><h2 id="try-on-title">Try on your item</h2><p id="try-on-item-name">Selected wardrobe item</p></div><button class="dialog-close" value="cancel" aria-label="Close try-on">×</button></form><div class="dialog-content"><div class="try-on-reference"><img id="try-on-item-image" alt="Selected clothing inspiration"><p id="try-on-reference-guidance">Use this recommended style as the reference.</p></div><label for="try-on-photo" id="try-on-photo-label">Your front-facing photo <span class="required-marker">*</span></label><input id="try-on-photo" type="file" accept="image/jpeg,image/png" required><div id="try-on-photo-memory" class="stored-photo-preview" aria-live="polite"></div><p id="try-on-photo-help" class="small-note">Your last try-on photo is reused unless you choose a replacement.</p><div id="try-on-gender-field" class="form-field" hidden><label for="try-on-gender">Gender for accessory try-on</label><select id="try-on-gender"><option value="">Choose one</option><option value="female">Women's fit</option><option value="male">Men's fit</option></select></div><label class="consent-line"><input id="try-on-consent" type="checkbox"><span>I consent to sending my photo and this style image to YouCam for virtual try-on. <span class="required-marker">*</span></span></label><button id="run-try-on" class="button button-primary" type="button">Generate try-on</button><div id="try-on-result" aria-live="polite"></div></div></dialog>
 </body>
 </html>
