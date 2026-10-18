@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of structured-cap">
+      <defs><clipPath id="clip-structured-cap"><rect x="150" y="90" width="340" height="360" rx="18"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="436" cy="155" r="116" fill="#69724b" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><path d="M210 298 Q222 165 320 164 Q415 164 428 298 Z" fill="#27384f" stroke="#37342f" stroke-width="6"/><path d="M165 300 Q320 330 475 300 Q468 352 320 355 Q190 350 165 300 Z" fill="#69724b" stroke="#37342f" stroke-width="6"/><path d="M320 172 L320 296" stroke="#69724b" stroke-width="4" opacity=".8"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>

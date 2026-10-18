@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of weekend-hoodie">
+      <defs><clipPath id="clip-weekend-hoodie"><path d="M260 130 L300 115 Q320 145 340 115 L380 130 L483 225 L393 260 L382 220 L382 410 L258 410 L258 220 L247 260 L157 225 Z"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="448" cy="155" r="116" fill="#27384f" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><path id="shape" d="M260 130 L300 115 Q320 145 340 115 L380 130 L483 225 L393 260 L382 220 L382 410 L258 410 L258 220 L247 260 L157 225 Z" fill="#898e95" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/><path d="M278 135 Q320 185 362 135 L350 210 L290 210 Z" fill="#27384f" stroke="#37342f" stroke-width="4"/><path d="M260 405 L380 405" stroke="#27384f" stroke-width="8"/><g clip-path="url(#clip-weekend-hoodie)"><path d="M329 274 q12.0 24 24 0" fill="none" stroke="#37342f" stroke-width="3" stroke-linecap="round"/></g><path d="M260 130 L300 115 Q320 145 340 115 L380 130 L483 225 L393 260 L382 220 L382 410 L258 410 L258 220 L247 260 L157 225 Z" fill="none" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>

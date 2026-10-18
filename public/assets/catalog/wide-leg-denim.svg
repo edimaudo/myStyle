@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of wide-leg-denim">
+      <defs><clipPath id="clip-wide-leg-denim"><path d="M218 135 L422 135 L408 430 L330 430 L312 292 L292 430 L218 430 Z"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="532" cy="155" r="116" fill="#343438" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><path id="shape" d="M218 135 L422 135 L408 430 L330 430 L312 292 L292 430 L218 430 Z" fill="#3e5479" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/><path d="M320 145 L320 282" stroke="#343438" stroke-width="5" opacity=".9"/><path d="M232 172 L232 395 M408 172 L408 395" stroke="#343438" stroke-width="3" opacity=".7"/><path d="M225 152 L415 152" stroke="#343438" stroke-width="9"/><g clip-path="url(#clip-wide-leg-denim)"><path d="M288 308 l18 0 l0 14 l-18 0 Z" fill="none" stroke="#37342f" stroke-width="3"/></g><path d="M218 135 L422 135 L408 430 L330 430 L312 292 L292 430 L218 430 Z" fill="none" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>
