@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of expanded-women-clothing-071">
+      <defs><clipPath id="clip-expanded-women-clothing-071"><path d="M260 145 L380 145 L390 280 L365 440 L325 440 L320 290 L310 440 L270 440 L250 280 Z"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="496" cy="155" r="116" fill="#25272c" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><path id="shape" d="M260 145 L380 145 L390 280 L365 440 L325 440 L320 290 L310 440 L270 440 L250 280 Z" fill="#25272c" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/><path d="M273 150 L320 200 L367 150" fill="none" stroke="#25272c" stroke-width="8"/><path d="M265 286 Q320 300 375 286" stroke="#25272c" stroke-width="5" opacity=".8"/><g clip-path="url(#clip-expanded-women-clothing-071)"><path d="M306 275 l42 0 M306 282 l42 0 M306 289 l42 0" fill="none" stroke="#37342f" stroke-width="2.5" stroke-linecap="round"/></g><path d="M260 145 L380 145 L390 280 L365 440 L325 440 L320 290 L310 440 L270 440 L250 280 Z" fill="none" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>
