@@ -2,7 +2,7 @@
   'use strict';
 
   const DB_NAME = 'mystyle-db';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const PROFILE_KEY = 'my-profile';
   const SETTINGS_KEY = 'display-settings';
   const DEFAULT_PROFILE = {
@@ -22,7 +22,7 @@
   const state = {
     db: null, profile: structuredClone(DEFAULT_PROFILE), settings: { theme: 'light', fontSize: 'medium' },
     catalog: { items: [], palettes: [], styles: [], occasions: [] }, config: {},
-    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, queuedRecommendation: null, activeEnsembleTab: 'clothing', cachedImages: { skinAnalysis: null, tryOn: null }, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, walkthroughStep: 0
+    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, queuedRecommendation: null, activeEnsembleTab: 'clothing', cachedImages: { skinAnalysis: null, tryOn: null }, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, wardrobeItems: [], wardrobeFilter: 'all', wardrobeObjectUrls: [], walkthroughStep: 0
   };
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -47,6 +47,7 @@
         if (!db.objectStoreNames.contains('profile')) db.createObjectStore('profile', { keyPath: 'key' });
         if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
         if (!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('wardrobe')) db.createObjectStore('wardrobe', { keyPath: 'id' });
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error('Could not open your local profile.'));
@@ -56,9 +57,10 @@
   function dbRequest(storeName, method, value) {
     return new Promise((resolve, reject) => {
       if (!state.db) return reject(new Error('Local profile storage is not ready.'));
-      const tx = state.db.transaction(storeName, method === 'get' ? 'readonly' : 'readwrite');
+      const readOnly = method === 'get' || method === 'getAll';
+      const tx = state.db.transaction(storeName, readOnly ? 'readonly' : 'readwrite');
       const store = tx.objectStore(storeName);
-      const request = method === 'get' ? store.get(value) : store.put(value);
+      const request = method === 'get' ? store.get(value) : method === 'getAll' ? store.getAll() : method === 'delete' ? store.delete(value) : store.put(value);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error('A local profile operation failed.'));
     });
@@ -94,6 +96,8 @@
     }
     const settingsRow = await dbRequest('settings', 'get', SETTINGS_KEY);
     if (settingsRow?.value) state.settings = { ...state.settings, ...settingsRow.value };
+    state.wardrobeItems = await dbRequest('wardrobe', 'getAll');
+    state.wardrobeItems.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     // Keep saved/disliked IDs valid for this version of the curated style catalogue.
     if (!Array.isArray(state.profile.savedItemIds)) state.profile.savedItemIds = [];
     if (!Array.isArray(state.profile.notForMeItemIds)) state.profile.notForMeItemIds = [];
@@ -296,7 +300,7 @@
     return new Intl.NumberFormat(COUNTRY() === 'US' ? 'en-US' : 'en-CA', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
   }
   const COLOR_HEX = {
-    black: '#202124', white: '#f8f7f2', cream: '#eee5d4', 'soft white': '#f5f3ec', oatmeal: '#c6b59b', grey: '#898e95', gray: '#898e95', charcoal: '#44474e', navy: '#27384f', 'ink blue': '#263c57', slate: '#7f8996', burgundy: '#743846', berry: '#a53d60', rust: '#b76340', olive: '#69724b', sage: '#9eae99', camel: '#b38b63', taupe: '#9a8a7b', sand: '#d2b995', ecru: '#e7dcc6', 'forest green': '#345745', 'light blue': '#9fb9cc', indigo: '#3e5479', 'washed black': '#343438', 'sky blue': '#91bad3', 'bright red': '#c93643', cobalt: '#255cc5', blush: '#e5bfc3', lavender: '#c5b6db', plum: '#663c63', emerald: '#246b54', teal: '#287f83', brown: '#76533d', chocolate: '#56382f', tan: '#ba9268', pink: '#d992a3', floral: '#c58b8e'
+    black: '#202124', stone: '#bcb4a6', white: '#f8f7f2', cream: '#eee5d4', 'soft white': '#f5f3ec', oatmeal: '#c6b59b', grey: '#898e95', gray: '#898e95', charcoal: '#44474e', navy: '#27384f', 'ink blue': '#263c57', slate: '#7f8996', burgundy: '#743846', berry: '#a53d60', rust: '#b76340', olive: '#69724b', sage: '#9eae99', camel: '#b38b63', taupe: '#9a8a7b', sand: '#d2b995', ecru: '#e7dcc6', 'forest green': '#345745', 'light blue': '#9fb9cc', indigo: '#3e5479', 'washed black': '#343438', 'sky blue': '#91bad3', 'bright red': '#c93643', cobalt: '#255cc5', blush: '#e5bfc3', lavender: '#c5b6db', plum: '#663c63', emerald: '#246b54', teal: '#287f83', brown: '#76533d', chocolate: '#56382f', tan: '#ba9268', pink: '#d992a3', floral: '#c58b8e', ivory: '#f5f0e2', silver: '#a6aaae', gold: '#c4a05e', 'soft white': '#f5f3ec', 'denim blue': '#587794', 'warm cream': '#eee4d1', terracotta: '#b76340', 'icy blue': '#c7e1f0', 'cool grey': '#a5a8ad'
   };
   function colorHex(color) { const key = String(color).toLowerCase(); return COLOR_HEX[key] || '#b4b5b0'; }
 
@@ -318,8 +322,8 @@
     const shop = shopUrl(item);
     const tags = [...(item.style_tags || []).slice(0, 3), item.category].map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
     return `<article class="style-card" data-item-card="${escapeHTML(item.id)}">
-      <div class="style-card-media" data-image-state="loading"><img data-style-image src="${escapeHTML(item.image_url)}" alt="Editorial inspiration for ${escapeHTML(item.name)}" loading="lazy" decoding="async"><div class="style-image-fallback"><span>myStyle inspiration</span><strong>${escapeHTML(item.name)}</strong></div><span class="style-card-season">${escapeHTML(seasonBadge)}</span><button class="save-style-button" data-save-item="${escapeHTML(item.id)}" type="button" aria-pressed="${String(saved)}" aria-label="${saved ? 'Remove from' : 'Save to'} my saved pieces">${saved ? '♥' : '♡'}</button></div>
-      <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A versatile option for your wardrobe.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div><div class="style-card-actions"><a class="button button-primary" href="${escapeHTML(shop)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a>${`<button class="button button-outline" data-try-on="${escapeHTML(item.id)}" type="button">Try on this style</button>`}${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}</div></div>
+      <div class="style-card-media" data-image-state="loading"><img data-style-image src="${escapeHTML(item.image_url)}" alt="Illustration of ${escapeHTML(item.name)}, shown in ${(item.colors || []).slice(0, 3).map(escapeHTML).join(" and ")}" loading="lazy" decoding="async"><div class="style-image-fallback"><span>myStyle inspiration</span><strong>${escapeHTML(item.name)}</strong></div><span class="style-card-season">${escapeHTML(seasonBadge)}</span><button class="save-style-button" data-save-item="${escapeHTML(item.id)}" type="button" aria-pressed="${String(saved)}" aria-label="${saved ? 'Remove from' : 'Save to'} my saved pieces">${saved ? '♥' : '♡'}</button></div>
+      <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A versatile option for your wardrobe.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div><div class="style-card-actions"><a class="button button-primary" href="${escapeHTML(shop)}" target="_blank" rel="noopener noreferrer">Shop similar ↗</a>${`<button class="button button-outline" data-view="wardrobe" type="button">Add your item in My wardrobe</button>`}${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}</div></div>
     </article>`;
   }
 
@@ -403,6 +407,122 @@
     bindStyleImages(grid);
     $('#saved-empty').hidden = items.length > 0;
     $('#saved-count').textContent = String(items.length);
+  }
+
+
+  function updateWardrobeCategoryOptions() {
+    const type = $('#wardrobe-item-type')?.value || 'clothing';
+    const select = $('#wardrobe-category');
+    if (!select) return;
+    const options = $$('option[data-wardrobe-type]', select);
+    options.forEach(option => {
+      const allowed = option.dataset.wardrobeType === type;
+      option.hidden = !allowed;
+      option.disabled = !allowed;
+    });
+    if (select.selectedOptions[0]?.disabled || select.selectedOptions[0]?.hidden) {
+      select.value = options.find(option => option.dataset.wardrobeType === type)?.value || '';
+    }
+  }
+
+  function wardrobeTryOnKind(item) {
+    if (item.item_type === 'clothing') return 'clothing';
+    const category = String(item.category || '').toLowerCase();
+    if (category.includes('bag') || category.includes('leather goods')) return 'bag';
+    if (category.includes('hat')) return 'hat';
+    if (category.includes('scarf')) return 'scarf';
+    if (category.includes('shoe')) return 'shoes';
+    return '';
+  }
+
+  function updateWardrobeCount() {
+    const count = $('#wardrobe-count');
+    if (count) count.textContent = String(state.wardrobeItems.length);
+    const status = $('#wardrobe-count-copy');
+    if (status) status.textContent = `${state.wardrobeItems.length} ${state.wardrobeItems.length === 1 ? 'piece' : 'pieces'} in your wardrobe`;
+  }
+
+  function renderWardrobe() {
+    const grid = $('#wardrobe-grid');
+    const empty = $('#wardrobe-empty');
+    if (!grid || !empty) return;
+    state.wardrobeObjectUrls.forEach(url => URL.revokeObjectURL(url));
+    state.wardrobeObjectUrls = [];
+    updateWardrobeCount();
+    const items = state.wardrobeItems.filter(item => state.wardrobeFilter === 'all' || item.item_type === state.wardrobeFilter);
+    $$('[data-wardrobe-filter]').forEach(button => {
+      const active = button.dataset.wardrobeFilter === state.wardrobeFilter;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    empty.hidden = items.length > 0;
+    grid.hidden = items.length === 0;
+    if (!items.length) { grid.replaceChildren(); return; }
+    grid.innerHTML = items.map(item => {
+      const url = URL.createObjectURL(item.imageBlob);
+      state.wardrobeObjectUrls.push(url);
+      const colours = (item.colors || []).map(colour => escapeHTML(colour)).join(' · ');
+      const season = item.season && item.season !== 'all' ? item.season[0].toUpperCase() + item.season.slice(1) : 'All seasons';
+      const canTry = Boolean(wardrobeTryOnKind(item));
+      return `<article class="wardrobe-card" data-wardrobe-card="${escapeHTML(item.id)}">
+        <div class="wardrobe-card-media"><img src="${url}" alt="Your photo of ${escapeHTML(item.name)}" loading="lazy" decoding="async"><span class="wardrobe-type-label">${item.item_type === 'accessory' ? 'Accessory' : 'Clothing'}</span></div>
+        <div class="wardrobe-card-content"><p class="wardrobe-card-category">${escapeHTML(item.category)} · ${escapeHTML(season)}</p><h3>${escapeHTML(item.name)}</h3>${colours ? `<p class="wardrobe-colours">${colours}</p>` : ''}${item.notes ? `<p class="wardrobe-notes">${escapeHTML(item.notes)}</p>` : ''}
+          <div class="wardrobe-card-actions">${canTry ? `<button class="button button-primary" data-try-on="${escapeHTML(item.id)}" type="button">Try on</button>` : '<span class="small-note">Virtual try-on is not available for this accessory type yet.</span>'}<button class="button button-outline" data-delete-wardrobe-item="${escapeHTML(item.id)}" type="button">Remove</button></div>
+        </div></article>`;
+    }).join('');
+  }
+
+  async function addWardrobeItem(event) {
+    event?.preventDefault?.();
+    const form = $('#wardrobe-form');
+    const file = $('#wardrobe-photo')?.files?.[0];
+    if (!file) { showAlert('Choose a photo of the clothing or accessory you want to add.', 'error'); return; }
+    if (!['image/jpeg', 'image/png'].includes(file.type)) { showAlert('Use a JPG or PNG photo.', 'error'); return; }
+    if (!file.size || file.size > 9_500_000) { showAlert('Choose a photo smaller than 9.5 MB.', 'error'); return; }
+    const submit = $('#wardrobe-add-button');
+    if (submit?.disabled) return;
+    if (submit) { submit.disabled = true; submit.textContent = 'Adding item…'; }
+    try {
+      const dimensions = await getImageDimensions(file);
+      if (dimensions.width < 160 || dimensions.height < 160) throw new Error('Choose a clearer photo at least 160 × 160 pixels.');
+      const name = $('#wardrobe-item-name')?.value.trim();
+      if (!name) throw new Error('Give this item a name.');
+      const itemType = $('#wardrobe-item-type')?.value === 'accessory' ? 'accessory' : 'clothing';
+      const category = $('#wardrobe-category')?.value || (itemType === 'accessory' ? 'Other accessories' : 'Tops');
+      const colors = String($('#wardrobe-colours')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 8);
+      const id = globalThis.crypto?.randomUUID?.() || `wardrobe-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const item = {
+        id, name, item_type: itemType, category, colors,
+        season: $('#wardrobe-season')?.value || 'all',
+        notes: $('#wardrobe-notes')?.value.trim().slice(0, 400) || '',
+        imageBlob: file.slice(0, file.size, file.type), imageType: file.type,
+        imageName: file.name || `${id}.jpg`, createdAt: new Date().toISOString(),
+      };
+      await dbRequest('wardrobe', 'put', item);
+      state.wardrobeItems.unshift(item);
+      form.reset();
+      updateWardrobeCategoryOptions();
+      renderWardrobe();
+      showAlert('Added to My wardrobe. The photo stays in this browser.', 'good');
+    } catch (error) {
+      showAlert(error.message || 'Could not add this item to My wardrobe.', 'error');
+    } finally {
+      if (submit) { submit.disabled = false; submit.textContent = 'Add to My wardrobe'; }
+    }
+  }
+
+  async function removeWardrobeItem(itemId) {
+    const item = state.wardrobeItems.find(entry => entry.id === itemId);
+    if (!item) return;
+    if (!window.confirm(`Remove “${item.name}” from My wardrobe?`)) return;
+    try {
+      await dbRequest('wardrobe', 'delete', itemId);
+      state.wardrobeItems = state.wardrobeItems.filter(entry => entry.id !== itemId);
+      renderWardrobe();
+      showAlert('Item removed from My wardrobe.', 'good');
+    } catch (error) {
+      showAlert(`Could not remove this item: ${error.message}`, 'error');
+    }
   }
 
   function skinPaletteGuide(colors) {
@@ -565,13 +685,23 @@
   }
 
   function openTryOn(itemId) {
-    const item = state.catalog.items.find(entry => entry.id === itemId) || state.recommendations.find(entry => entry.id === itemId) || state.accessoryRecommendations.find(entry => entry.id === itemId);
-    if (!item) { showAlert('Could not find that style. Refresh recommendations and try again.', 'error'); return; }
-    const itemType = item.item_type || (item.category === 'Accessories' ? 'accessory' : 'clothing');
-    const tryOnKind = item.try_on_kind || 'clothing';
+    const wardrobeItem = state.wardrobeItems.find(entry => entry.id === itemId);
+    const item = wardrobeItem || state.catalog.items.find(entry => entry.id === itemId) || state.recommendations.find(entry => entry.id === itemId) || state.accessoryRecommendations.find(entry => entry.id === itemId);
+    if (!item) { showAlert('Could not find that item. Open My wardrobe and choose it again.', 'error'); return; }
+    if (!wardrobeItem || item.image_kind === 'illustration') {
+      showAlert('Built-in recommendations are style illustrations, not product photographs. Add a photo of your own item in My wardrobe to use virtual try-on.', 'error');
+      return;
+    }
+    const itemType = item.item_type || 'clothing';
+    const tryOnKind = wardrobeTryOnKind(item);
+    if (!tryOnKind) { showAlert('Virtual try-on is not available for this accessory type yet.', 'error'); return; }
+    const dialog = $('#try-on-dialog');
+    if (dialog.dataset.referenceObjectUrl) URL.revokeObjectURL(dialog.dataset.referenceObjectUrl);
+    const referenceUrl = URL.createObjectURL(item.imageBlob);
+    dialog.dataset.referenceObjectUrl = referenceUrl;
     $('#try-on-item-name').textContent = item.name;
-    $('#try-on-item-image').src = item.image_url;
-    $('#try-on-item-image').alt = `Reference image for ${item.name}`;
+    $('#try-on-item-image').src = referenceUrl;
+    $('#try-on-item-image').alt = `Photo of ${item.name}`;
     $('#try-on-photo').value = '';
     $('#try-on-consent').checked = false;
     $('#try-on-result').replaceChildren();
@@ -592,11 +722,12 @@
     if (genderField) genderField.hidden = itemType !== 'accessory';
     const genderSelect = $('#try-on-gender');
     if (genderSelect) genderSelect.value = fitGender;
-    const dialog = $('#try-on-dialog');
-    dialog.dataset.itemImage = item.image_url;
+    dialog.dataset.itemImage = '';
     dialog.dataset.itemName = item.name;
     dialog.dataset.itemType = itemType;
     dialog.dataset.tryOnKind = tryOnKind;
+    dialog.dataset.itemSource = 'wardrobe';
+    dialog.dataset.wardrobeItemId = item.id;
     renderStoredPhoto('tryOn');
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
@@ -637,7 +768,10 @@
     try {
       const form = new FormData();
       form.append('photo', photo, photo.name || 'mystyle-try-on.jpg');
-      form.append('item_image_url', dialog.dataset.itemImage || '');
+      const wardrobeReference = state.wardrobeItems.find(entry => entry.id === dialog.dataset.wardrobeItemId);
+      if (!wardrobeReference?.imageBlob) throw new Error('That wardrobe photo is no longer available. Open My wardrobe and choose the item again.');
+      form.append('item_image', wardrobeReference.imageBlob, wardrobeReference.imageName || 'mystyle-wardrobe-reference.jpg');
+      form.append('item_image_url', '');
       form.append('item_type', itemType);
       form.append('accessory_kind', accessoryKind);
       form.append('gender', gender);
@@ -670,7 +804,9 @@
     { title: 'Ensemble: accessories', copy: 'After skin analysis, the Accessories tab shows bags, scarves, headwear and shoes ranked against detected colour cues.', view: 'discover', tab: 'accessories' },
     { title: 'Skin analysis', copy: 'Upload a front-facing selfie and consent to YouCam processing. Detected colour values become visible here and guide accessories.', view: 'skin-analysis' },
     { title: 'Style profile', copy: 'Adjust gender preference, region, season, fit, sizes, colour scheme and budget. Save changes to refresh recommendations.', view: 'profile' },
-    { title: 'Saved pieces and try-on', copy: 'Use the heart to keep ideas. Try on clothing or supported accessories with a separate try-on photo that myStyle remembers in this browser.', view: 'saved' }
+    { title: 'Saved pieces', copy: 'Use the heart to keep catalogue concepts in a shortlist for later.', view: 'saved' },
+    { title: 'My wardrobe', copy: 'Add photos of clothes and accessories you already own. They stay in this browser, and supported pieces can be used for virtual try-on.', view: 'wardrobe' },
+    { title: 'Virtual try-on', copy: 'Try on your own clothing photo or supported accessory with your saved try-on photo. Processing requires consent and a configured service key.', view: 'wardrobe' }
   ];
 
   function showWalkthroughStep(index) {
@@ -776,6 +912,7 @@
     if (view === 'skin-analysis') renderSkinAnalysis(state.profile.skinAnalysis);
     if (view === 'saved') renderSaved();
     if (view === 'discover') renderSaved();
+    if (view === 'wardrobe') renderWardrobe();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -890,6 +1027,10 @@
       if (saveButton) { await toggleSaved(saveButton.dataset.saveItem); return; }
       const notForMe = event.target.closest('[data-not-for-me]');
       if (notForMe) { await markNotForMe(notForMe.dataset.notForMe); return; }
+      const deleteWardrobe = event.target.closest('[data-delete-wardrobe-item]');
+      if (deleteWardrobe) { await removeWardrobeItem(deleteWardrobe.dataset.deleteWardrobeItem); return; }
+      const wardrobeFilter = event.target.closest('[data-wardrobe-filter]');
+      if (wardrobeFilter) { state.wardrobeFilter = wardrobeFilter.dataset.wardrobeFilter; renderWardrobe(); return; }
       if (event.target.closest('[data-reset-dislikes]')) { await resetDislikes(); return; }
       if (event.target.closest('#retry-edit')) { await requestRecommendations(state.lastQuery); }
       const tabButton = event.target.closest('[data-ensemble-tab]');
@@ -906,6 +1047,13 @@
     $('.theme-toggle')?.addEventListener('click', async () => { state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark'; applySettings(); try { await saveSettings(); } catch (_) { /* display setting is still applied */ } });
     $$('[data-font]').forEach(button => button.addEventListener('click', async () => { state.settings.fontSize = button.dataset.font; applySettings(); try { await saveSettings(); } catch (_) { /* display setting is still applied */ } }));
     $('#profile-form')?.addEventListener('submit', saveProfile);
+    $('#wardrobe-form')?.addEventListener('submit', addWardrobeItem);
+    $('#wardrobe-item-type')?.addEventListener('change', updateWardrobeCategoryOptions);
+    $('#try-on-dialog')?.addEventListener('close', () => {
+      const dialog = $('#try-on-dialog');
+      if (dialog.dataset.referenceObjectUrl) URL.revokeObjectURL(dialog.dataset.referenceObjectUrl);
+      delete dialog.dataset.referenceObjectUrl;
+    });
     $('#save-profile-top')?.addEventListener('click', () => saveProfile());
     $('#quiz-form')?.addEventListener('submit', submitQuiz);
     $('#quick-palette-form')?.addEventListener('submit', applyQuickPalette);
@@ -930,6 +1078,8 @@
       state.db = await openDatabase();
       await loadLocalState();
       await loadCachedPhotos();
+      renderWardrobe();
+      updateWardrobeCategoryOptions();
       renderProfileChoices();
       renderSkinAnalysis(state.profile.skinAnalysis);
       updateSeasonDetails();
