@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-label="Illustration of ankle-boots">
+      <defs><clipPath id="clip-ankle-boots"><rect x="150" y="90" width="340" height="360" rx="18"/></clipPath></defs>
+      <rect x="22" y="22" width="596" height="516" rx="34" fill="#f4f1eb"/>
+      <circle cx="484" cy="155" r="116" fill="#56382f" opacity=".16"/>
+      <path d="M95 448 Q320 475 545 448" fill="none" stroke="#ded8cf" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="320" cy="450" rx="145" ry="18" fill="#d9d3ca" opacity=".42"/><path id="shape" d="M265 130 L355 130 L355 300 L410 355 Q445 383 421 411 L200 411 Q184 402 200 379 L250 337 L250 165 Z" fill="#25272c" stroke="#37342f" stroke-width="6" stroke-linejoin="round"/><path d="M190 380 Q295 397 435 380" fill="none" stroke="#56382f" stroke-width="8" stroke-linecap="round"/>
+      <path d="M50 506 L590 506" stroke="#e7e1d9" stroke-width="1"/>
+    </svg>
