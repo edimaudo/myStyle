@@ -38,9 +38,9 @@ html[data-theme="dark"] .marketing-nav .font-control button[aria-pressed="true"]
   .site-display-controls .icon-control { padding: 7px 9px; }
 }
 
-/* Locally generated colour-accurate style illustrations and personal wardrobe. */
-.style-card-media img[data-style-image] { object-fit: contain; padding: 5px; background: #f4f1eb; }
-.catalogue-illustration-note { margin: -13px 0 22px; max-width: 900px; color: var(--ink-soft); font-size: .83rem; line-height: 1.55; }
+/* Real-photo references, retailer purchase links, and personal wardrobe. */
+.style-card-media img[data-style-image] { object-fit: cover; padding: 0; background: var(--surface-muted); }
+.catalogue-photo-note { margin: -13px 0 22px; max-width: 900px; color: var(--ink-soft); font-size: .83rem; line-height: 1.55; }
 .wardrobe-layout { display: grid; grid-template-columns: minmax(285px, 350px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .wardrobe-add-card { min-width: 0; }
 .wardrobe-form { display: grid; gap: 13px; }
@@ -81,5 +81,89 @@ html[data-theme="dark"] .marketing-nav .font-control button[aria-pressed="true"]
 @media (max-width: 560px) {
   .wardrobe-grid { grid-template-columns: 1fr; }
   .wardrobe-form .form-grid { grid-template-columns: 1fr; }
-  .catalogue-illustration-note { margin-top: -8px; }
+  .catalogue-photo-note { margin-top: -8px; }
+}
+
+/* Real garment photography, shopping choices, and wardrobe matches. */
+.style-card-media img[data-style-image] { object-fit: cover; padding: 0; background: var(--surface-muted); }
+.style-card-media[data-image-state="error"] { background: var(--surface-muted); }
+.style-card-media[data-image-state="error"] img { display: none; }
+.style-card-media[data-image-state="error"] .style-image-fallback { display: flex; background: var(--surface-muted); color: var(--ink); }
+.style-card-media[data-image-state="error"] .style-image-fallback span { color: var(--ink-soft); }
+.style-photo-credit { display: inline-block; margin: 0 0 10px; color: var(--ink-soft); font-size: .72rem; text-underline-offset: 3px; }
+.style-photo-credit:hover { color: var(--blue-ink); }
+.style-card-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.style-card-actions .button { width: 100%; min-height: 39px; }
+.catalogue-photo-note { max-width: 940px; }
+.ensemble-wardrobe-matches { margin: 22px 0 26px; padding: 17px 0 21px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.wardrobe-match-heading h2 { margin: 0; font-size: 1.2rem; }
+.wardrobe-match-heading p { margin: 5px 0 15px; color: var(--ink-soft); font-size: .85rem; line-height: 1.5; }
+.wardrobe-match-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.wardrobe-match-card { min-width: 0; display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 13px; padding: 11px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; }
+.wardrobe-match-card > img { width: 105px; height: 128px; object-fit: cover; border-radius: 4px; background: var(--surface-muted); }
+.wardrobe-match-card > div { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.wardrobe-match-kicker { margin: 0 0 5px; color: var(--ink-soft); text-transform: uppercase; font-size: .64rem; font-weight: 700; letter-spacing: .07em; }
+.wardrobe-match-card h3 { margin: 0; font-size: .95rem; line-height: 1.3; overflow-wrap: anywhere; }
+.wardrobe-match-card p:not(.wardrobe-match-kicker) { margin: 7px 0 10px; color: var(--ink-soft); font-size: .76rem; line-height: 1.45; }
+.wardrobe-match-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+.wardrobe-match-actions .button { min-height: 34px; padding: 6px 10px; font-size: .77rem; }
+.buy-dialog { width: min(560px, calc(100% - 24px)); border: 1px solid var(--line); padding: 23px; border-radius: 10px; color: var(--ink); background: var(--surface); }
+.buy-dialog::backdrop { background: rgba(10, 12, 18, .6); }
+.buy-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; }
+.buy-dialog-header h2 { margin: 0 0 4px; font-size: 1.35rem; }
+.buy-dialog-header p { margin: 0; color: var(--ink-soft); font-size: .87rem; line-height: 1.5; }
+.buy-disclaimer { margin: 16px 0; padding: 12px 14px; color: var(--ink-soft); background: var(--surface-muted); font-size: .8rem; line-height: 1.55; }
+.buy-retailer-links { display: grid; gap: 8px; }
+.buy-retailer-link { display: flex; justify-content: space-between; align-items: center; gap: 13px; padding: 12px 14px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 6px; }
+.buy-retailer-link:hover { border-color: var(--blue); background: var(--surface-muted); }
+.buy-retailer-link > span:first-child { display: grid; gap: 3px; }
+.buy-retailer-link small { color: var(--ink-soft); font-size: .76rem; }
+.profile-skin-summary { padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); }
+.profile-skin-summary[data-available="false"] { filter: grayscale(1); opacity: .48; }
+.profile-skin-summary[data-available="false"] .profile-skin-swatches { min-height: 24px; }
+.profile-skin-summary p { margin: 0 0 10px; color: var(--ink-soft); font-size: .84rem; line-height: 1.5; }
+.profile-skin-swatches { display: flex; flex-wrap: wrap; gap: 9px; }
+.profile-skin-swatch-chip { min-width: 90px; display: grid; grid-template-columns: 24px minmax(0,1fr); align-items: center; gap: 2px 8px; padding: 7px 9px; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; }
+.profile-skin-swatch-chip i { grid-row: span 2; display: block; width: 24px; height: 24px; border: 1px solid rgba(0,0,0,.12); border-radius: 50%; }
+.profile-skin-swatch-chip strong { font-size: .75rem; }
+.profile-skin-swatch-chip small { color: var(--ink-soft); font-size: .68rem; }
+
+/* Dark mode uses an aubergine surface with coral/apricot accents instead of green. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #17141c;
+  --surface: #211b28;
+  --surface-muted: #2b2334;
+  --surface-blue: #302139;
+  --ink: #f7f0f5;
+  --ink-soft: #d3c2d2;
+  --ink-faint: #b09caf;
+  --line: #49354c;
+  --blue: #ffad8b;
+  --blue-hover: #ffc3a8;
+  --blue-ink: #ffc0a2;
+  --blue-soft: #4a293f;
+  --teal: #8c6a9b;
+  --accent: #f0d28b;
+  --focus-ring: #ffc0a2;
+}
+html[data-theme="dark"] .button-primary,
+html[data-theme="dark"] .marketing-nav .button-primary {
+  color: #281620;
+  background: #ffad8b;
+  border-color: #ffad8b;
+}
+html[data-theme="dark"] .button-primary:hover { background: #ffc3a8; border-color: #ffc3a8; color: #281620; }
+html[data-theme="dark"] .mystyle-sidebar .side-nav-link.is-active { background: #39283f; border-left: 3px solid #ffad8b; }
+html[data-theme="dark"] .ensemble-tab.is-active { color: #ffc0a2; border-bottom-color: #ffad8b; }
+html[data-theme="dark"] .profile-skin-summary { background: #292130; }
+html[data-theme="dark"] .skin-insight-banner { background: #302139; border-color: #634761; }
+html[data-theme="dark"] .buy-disclaimer { background: #302139; }
+html[data-theme="dark"] .style-card-media[data-image-state="error"] .style-image-fallback { background: #302139; }
+
+@media (max-width: 720px) {
+  .wardrobe-match-grid { grid-template-columns: 1fr; }
+  .wardrobe-match-card { grid-template-columns: 90px minmax(0, 1fr); }
+  .wardrobe-match-card > img { width: 90px; height: 112px; }
+  .buy-dialog { padding: 18px; }
 }

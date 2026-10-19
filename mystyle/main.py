@@ -602,7 +602,7 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         "model": GEMINI_MODEL if ai else None,
         "explanation": (ai or {}).get("explanation") or f"Ranked {len(clothing_ranked)} clothing concepts against your gender preference, palette, fit preferences, budget, lifestyle and {SEASON_LABELS[season].lower()} season.",
         "skin_palette_guide": guide,
-        "catalogue_note": "Built-in cards use locally generated illustrations matched to each concept's silhouette and colour metadata, not product photographs or live retailer listings. Budget targets are illustrative. Shop links search for similar items; verify current price, size and availability with the retailer.",
+        "catalogue_note": "Cards use curated real fashion photographs as style references, not guaranteed exact retail products. Buy opens official retailer search pages for similar items. Check current price, stock, sizing, shipping and return terms with each store.",
     }
 
 

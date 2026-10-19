@@ -47,5 +47,5 @@
 ## Limitations to verify in staging
 
 - Editorial images and target price values are inspiration only.
-- Shop similar opens a country-aware Google Shopping search, not an affiliate feed or guaranteed matching product.
+- Buy opens official store search pages for comparable products, not guaranteed exact SKUs or an affiliate feed.
 - Gemini and YouCam live integration require provider keys and are not validated by mocked unit tests.

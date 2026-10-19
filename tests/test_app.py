@@ -40,8 +40,8 @@ def test_gender_preference_filters_clothing_recommendations(client):
     women_ids = {item["id"] for item in women["recommendations"]}
     men_ids = {item["id"] for item in men["recommendations"]}
     assert women_ids and men_ids
-    assert "mens-oxford-shirt" not in women_ids
-    assert "midi-dress" not in men_ids
+    assert "look-men-white-oxford" not in women_ids
+    assert "look-women-white-shirt" not in men_ids
     assert all(item["gender_tags"] != ["women"] for item in men["recommendations"])
     assert all(item["gender_tags"] != ["men"] for item in women["recommendations"])
 
@@ -71,55 +71,56 @@ def test_gender_tags_are_explicit_and_match_all_catalogue_items():
         assert item["gender_tags"] in (["women"], ["men"], ["unisex"])
 
 
-def test_catalogue_contains_over_100_clothing_concepts_and_accessories_per_gender():
-    assert len(ITEMS) >= 390
+def test_catalogue_has_a_quality_first_real_photo_set_by_gender():
+    assert len(ITEMS) >= 70
+    assert len({item["image_url"] for item in ITEMS}) == len(ITEMS)
+    assert len({item["name"] for item in ITEMS}) == len(ITEMS)
+    counts = {}
     for gender in ("women", "men", "unisex"):
         group = [item for item in ITEMS if item["gender_tags"] == [gender]]
-        clothing = [item for item in group if item["item_type"] == "clothing"]
-        accessories = [item for item in group if item["item_type"] == "accessory"]
-        assert len(clothing) >= 110, f"{gender} has only {len(clothing)} clothing concepts"
-        assert len(accessories) >= 25, f"{gender} has only {len(accessories)} accessory concepts"
+        counts[gender] = sum(item["item_type"] == "clothing" for item in group)
+        assert counts[gender] >= (25 if gender in {"women", "men"} else 8)
+    assert counts["women"] == 27 and counts["men"] == 27 and counts["unisex"] == 9
 
 
-def test_catalogue_images_are_local_unique_and_colour_consistent():
-    import hashlib
-    import re
+def test_catalogue_uses_unique_real_photo_urls_and_honest_metadata():
+    from urllib.parse import urlparse
 
-    root = Path(__file__).resolve().parents[1]
-    image_urls = [item["image_url"] for item in ITEMS]
-    assert len(image_urls) == len(set(image_urls))
-    assert len({item["name"] for item in ITEMS}) == len(ITEMS)
-    canonical_art = set()
+    urls = [item["image_url"] for item in ITEMS]
+    names = [item["name"] for item in ITEMS]
+    assert len(urls) == len(set(urls)) == len(ITEMS)
+    assert len(names) == len(set(names)) == len(ITEMS)
     for item in ITEMS:
-        assert item["image_url"].startswith("/assets/catalog/")
-        assert item["image_kind"] == "illustration"
-        assert item["image_source_url"] is None
-        asset = root / "public" / item["image_url"].lstrip("/")
-        assert asset.is_file(), f"Missing illustration for {item['id']}"
-        svg = asset.read_text(encoding="utf-8")
-        svg = re.sub(r'aria-label="Illustration of [^\"]+"', 'aria-label="Illustration"', svg)
-        svg = re.sub(r'clip-[\w-]+', 'clip-reference', svg)
-        canonical_art.add(hashlib.sha256(svg.encode("utf-8")).hexdigest())
-    assert len(canonical_art) == len(ITEMS), "Catalogue contains duplicate artwork with only different metadata"
-
-    statement = next(item for item in ITEMS if item["id"] == "statement-shirt")
-    oxford = next(item for item in ITEMS if item["id"] == "mens-oxford-shirt")
-    assert statement["name"] == "Ink blue, rust and berry colour-block shirt"
-    assert statement["colors"][:3] == ["Ink blue", "Rust", "Berry"]
-    assert statement["pattern"] == "colour-block"
-    statement_svg = (root / "public" / statement["image_url"].lstrip("/")).read_text(encoding="utf-8")
-    assert all(hex_colour in statement_svg for hex_colour in ("#263c57", "#b76340", "#a53d60"))
-    assert oxford["name"] == "White men's classic Oxford shirt"
-    assert oxford["colors"][0] == "White"
-    assert statement["image_url"] != oxford["image_url"]
+        parsed = urlparse(item["image_url"])
+        assert parsed.scheme == "https"
+        assert parsed.hostname == "images.pexels.com"
+        assert item["image_kind"] == "photo"
+        assert item["photographer_source"] == "Pexels"
+        assert item["image_source_url"].startswith("https://www.pexels.com/search/")
+        assert item["image_url"] in item["description"] or "Real outfit photography" in item["description"]
+        assert item["try_on_supported"] is False or item["item_type"] == "clothing"
+    white_shirt = next(item for item in ITEMS if item["id"] == "look-men-white-oxford")
+    colour_block = next(item for item in ITEMS if item["id"] == "look-men-plaid-layer")
+    assert white_shirt["colors"] == ["white", "brown"]
+    assert colour_block["colors"] == ["burgundy", "green", "black"]
+    assert white_shirt["image_url"] != colour_block["image_url"]
 
 
-def test_local_catalogue_illustrations_are_served_without_remote_photo_dependencies(client):
-    response = client.get("/assets/catalog/statement-shirt.svg")
+def test_catalogue_photography_and_shopping_controls_are_present(client):
+    csrf = signed_in(client)
+    response = client.get("/api/catalog", headers={"X-CSRF-Token": csrf})
     assert response.status_code == 200
-    assert "#263c57" in response.text
-    assert "#b76340" in response.text
-    assert "#a53d60" in response.text
+    items = response.json()["items"]
+    assert len(items) == len(ITEMS) == 75
+    assert all(item["image_kind"] == "photo" for item in items)
+    assert all(item["image_url"].startswith("https://images.pexels.com/photos/") for item in items)
+    html = client.get("/app").text
+    script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert 'id="buy-dialog"' in html
+    assert 'data-buy-item' in script
+    assert "https://www.target.com/s?searchTerm=" in script
+    assert "https://www.nordstrom.com/sr?origin=keywordsearch" in script
+    assert "Photo via Pexels" in script
 
 
 def test_accessories_require_skin_analysis_and_use_detected_colour_cues(client):
@@ -137,13 +138,14 @@ def test_accessories_require_skin_analysis_and_use_detected_colour_cues(client):
 
 def test_catalog_has_try_on_metadata_for_accessories_and_gender_tags():
     ids = {item["id"]: item for item in ITEMS}
-    assert ids["crossbody-bag"]["item_type"] == "accessory"
-    assert ids["silk-scarf"]["try_on_kind"] == "scarf"
-    assert ids["structured-cap"]["try_on_kind"] == "hat"
-    assert ids["sneakers"]["try_on_kind"] == "shoes"
-    assert ids["midi-dress"]["gender_tags"] == ["women"]
-    assert ids["mens-oxford-shirt"]["gender_tags"] == ["men"]
-    assert ids["relaxed-blazer"]["gender_tags"] == ["unisex"]
+    assert ids["accessory-men-crossbody"]["item_type"] == "accessory"
+    assert ids["accessory-men-layered-scarf"]["try_on_kind"] == "scarf"
+    assert ids["accessory-women-sunhat"]["try_on_kind"] == "hat"
+    assert ids["accessory-women-boots"]["try_on_kind"] == "shoes"
+    assert ids["look-women-city-tie"]["gender_tags"] == ["women"]
+    assert ids["look-men-white-oxford"]["gender_tags"] == ["men"]
+    assert ids["look-unisex-black-minimal"]["gender_tags"] == ["unisex"]
+    assert ids["look-men-white-oxford"]["try_on_supported"] is True
 
 
 def test_profile_quiz_walkthrough_tabs_and_persistent_photos_are_wired(client):
@@ -199,6 +201,55 @@ def test_accessory_try_on_requires_supported_kind_and_gender_before_provider_cal
     assert response.status_code == 400
     assert "gender option" in response.json()["detail"]
     assert callable(try_on)
+
+
+def test_ensemble_exposes_real_photo_buy_and_virtual_try_on_actions(client):
+    signed_in(client)
+    html = client.get("/app").text
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert 'id="buy-dialog"' in html
+    assert 'id="buy-retailer-links"' in html
+    assert 'id="ensemble-wardrobe-matches"' in html
+    assert "data-try-on=\"${escapeHTML(item.id)}\"" in script
+    assert "item.try_on_supported && item.image_kind === 'photo'" in script
+    assert "form.append('item_image_url', dialog.dataset.itemImage)" in script
+    assert "function openBuyDialog(itemId)" in script
+    assert "function retailerChoices(item)" in script
+    assert "https://www.target.com/s?searchTerm=" in script
+    assert "https://www.uniqlo.com/ca/en/search?q=" in script
+    assert "function renderEnsembleWardrobeMatches()" in script
+
+
+def test_profile_skin_summary_is_read_only_and_updates_after_new_analysis(client):
+    signed_in(client)
+    html = client.get("/app").text
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    style = (root / "public" / "assets" / "marketing-controls.css").read_text(encoding="utf-8")
+    assert 'id="profile-skin-summary"' in html
+    assert 'aria-disabled="true"' in html
+    assert 'id="profile-skin-swatches"' in html
+    assert "function renderProfileSkinSummary" in script
+    assert "state.profile.skinAnalysisUpdatedAt = new Date().toISOString()" in script
+    assert "renderProfileSkinSummary(colors)" in script
+    assert '.profile-skin-summary[data-available="false"] { filter: grayscale(1); opacity: .48; }' in style
+
+
+def test_dark_mode_has_complementary_plum_and_coral_palette():
+    root = Path(__file__).resolve().parents[1]
+    styles = (root / "public" / "assets" / "marketing-controls.css").read_text(encoding="utf-8")
+    assert "--page: #17141c;" in styles
+    assert "--surface: #211b28;" in styles
+    assert "--blue: #ffad8b;" in styles
+    assert 'html[data-theme="dark"] .button-primary' in styles
+
+
+def test_catalogue_has_no_generated_svg_artwork_left():
+    root = Path(__file__).resolve().parents[1]
+    assert not (root / "scripts" / "generate_catalog_art.py").exists()
+    assert not (root / "public" / "assets" / "catalog").exists()
+
 
 def test_health_uses_mystyle_brand(client):
     response = client.get("/health")
@@ -272,19 +323,19 @@ def test_catalogue_contains_style_concepts_and_not_shows(client):
     response = client.get("/api/catalog", headers={"X-CSRF-Token": csrf})
     assert response.status_code == 200
     data = response.json()
-    assert len(data["items"]) >= 390
+    assert len(data["items"]) == 75
     assert data["palettes"] == PALETTES
     assert data["styles"] == STYLE_OPTIONS
     assert data["occasions"] == OCCASIONS
     assert "shows" not in data
-    assert {"soft-trench", "white-tee", "wool-coat", "linen-shirt"}.issubset({x["id"] for x in data["items"]})
+    assert {"look-men-white-oxford", "look-women-white-shirt", "look-unisex-black-minimal"}.issubset({x["id"] for x in data["items"]})
 
 
 def test_catalogue_has_season_and_region_aware_fields():
     assert all(item["seasons"] for item in ITEMS)
     assert all(item["climates"] for item in ITEMS)
     assert all(item["target_usd"] > 0 and item["target_cad"] > 0 for item in ITEMS)
-    assert all(item["image_url"].startswith("/assets/catalog/") for item in ITEMS)
+    assert all(item["image_url"].startswith("https://images.pexels.com/photos/") for item in ITEMS)
     assert all(item["shop_query"] for item in ITEMS)
 
 
@@ -316,7 +367,7 @@ def test_recommendations_use_current_season_budget_and_currency(client):
     assert all(x["currency"] == "CAD" for x in data["recommendations"])
     assert all(x["target_price"] <= 220 for x in data["recommendations"])
     assert all(x["season_match"] for x in data["recommendations"])
-    assert any(x["id"] == "wool-coat" for x in data["recommendations"])
+    assert any(x["id"] == "look-men-white-winter-jacket" for x in data["recommendations"])
     assert data["source"] == "profile-ranker"
 
 
@@ -348,19 +399,19 @@ def test_recommendations_use_usd_budget_for_us_profile(client):
 
 def test_recommendations_exclude_not_for_me_feedback(client):
     csrf = signed_in(client)
-    profile = {"country": "CA", "season": "fall", "climate": "variable", "budget": "any", "styleTags": ["casual"], "occasions": ["everyday"], "colorScheme": "earth", "notForMeItemIds": ["plaid-overshirt"]}
+    profile = {"country": "CA", "season": "fall", "climate": "variable", "budget": "any", "styleTags": ["casual"], "occasions": ["everyday"], "colorScheme": "earth", "notForMeItemIds": ["look-men-plaid-layer"]}
     response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "limit": 16})
     assert response.status_code == 200
-    assert "plaid-overshirt" not in {item["id"] for item in response.json()["recommendations"]}
+    assert "look-men-plaid-layer" not in {item["id"] for item in response.json()["recommendations"]}
 
 
 def test_recommendations_use_search_query_to_rank_existing_items(client):
     csrf = signed_in(client)
     profile = {"country": "CA", "season": "spring", "climate": "mild", "budget": "any", "styleTags": [], "occasions": [], "colorScheme": "earth"}
-    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "query": "linen button down shirt", "limit": 4})
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "query": "white shirt casual trousers", "limit": 4})
     assert response.status_code == 200
     ids = [item["id"] for item in response.json()["recommendations"]]
-    assert ids[0] == "linen-shirt"
+    assert ids[0] == "look-men-white-shirt-casual-pants"
 
 
 def test_recommendations_return_disclaimer_about_editorial_images_and_prices(client):
@@ -368,7 +419,7 @@ def test_recommendations_return_disclaimer_about_editorial_images_and_prices(cli
     response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": {"budget": "any", "country": "CA", "season": "auto"}})
     assert response.status_code == 200
     note = response.json()["catalogue_note"]
-    assert "not product photographs" in note
+    assert "real fashion photographs" in note
     assert "current price" in note
 
 
@@ -391,8 +442,8 @@ def test_skin_guided_palette_changes_ranking_when_analysis_is_applied():
     manual_scores = {item["id"]: item["match_score"] for item in main.rank_items(manual_palette, ITEMS, limit=len(ITEMS))}
     guided_items = main.rank_items(skin_guided_palette, ITEMS, limit=len(ITEMS))
     guided_scores = {item["id"]: item["match_score"] for item in guided_items}
-    assert guided_scores["midi-dress"] > manual_scores["midi-dress"]
-    assert guided_scores["soft-cardigan"] < manual_scores["soft-cardigan"]
+    assert guided_scores["look-men-blue-shirt-trousers"] > manual_scores["look-men-blue-shirt-trousers"]
+    assert guided_scores["look-men-shirt-scarf"] < manual_scores["look-men-shirt-scarf"]
     assert any("skin analysis" in item["recommendation_reason"].lower() for item in guided_items)
 
 
