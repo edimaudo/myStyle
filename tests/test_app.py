@@ -98,7 +98,9 @@ def test_catalogue_uses_unique_real_photo_urls_and_honest_metadata():
         assert item["photographer_source"] == "Pexels"
         assert item["image_source_url"].startswith("https://www.pexels.com/search/")
         assert item["image_url"] in item["description"] or "Real outfit photography" in item["description"]
-        assert item["try_on_supported"] is False or item["item_type"] == "clothing"
+        assert item["try_on_supported"] is True
+        if item["item_type"] == "accessory":
+            assert item["try_on_kind"] in {"bag", "hat", "scarf", "shoes"}
     white_shirt = next(item for item in ITEMS if item["id"] == "look-men-white-oxford")
     colour_block = next(item for item in ITEMS if item["id"] == "look-men-plaid-layer")
     assert white_shirt["colors"] == ["white", "brown"]
@@ -212,13 +214,64 @@ def test_ensemble_exposes_real_photo_buy_and_virtual_try_on_actions(client):
     assert 'id="buy-retailer-links"' in html
     assert 'id="ensemble-wardrobe-matches"' in html
     assert "data-try-on=\"${escapeHTML(item.id)}\"" in script
-    assert "item.try_on_supported && item.image_kind === 'photo'" in script
+    assert "item.try_on_supported && item.image_kind === 'photo' && tryOnTypeSupported" in script
+    assert "Try on from My wardrobe" not in script
     assert "form.append('item_image_url', dialog.dataset.itemImage)" in script
     assert "function openBuyDialog(itemId)" in script
     assert "function retailerChoices(item)" in script
     assert "https://www.target.com/s?searchTerm=" in script
     assert "https://www.uniqlo.com/ca/en/search?q=" in script
     assert "function renderEnsembleWardrobeMatches()" in script
+
+
+
+def test_style_profile_uses_country_specific_region_dropdown_before_city(client):
+    signed_in(client)
+    html = client.get("/app").text
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+
+    assert '<select id="profile-region" name="region" required>' in html
+    assert '<input id="profile-region"' not in html
+    assert html.index('id="profile-region"') < html.index('id="profile-city"')
+    assert "function renderRegionOptions(preferredRegion = state.profile.region || '')" in script
+    assert "state.profile.region = '';" in script
+    assert "renderRegionOptions('');" in script
+
+    us_block = re.search(r"US: \[([\s\S]*?)\n    \]", script).group(1)
+    ca_block = re.search(r"CA: \[([\s\S]*?)\n    \],\n    US:", script).group(1)
+    us_states = re.findall(r"\['[A-Z]{2}', '([^']+)'\]", us_block)
+    ca_regions = re.findall(r"\['[A-Z]{2}', '([^']+)'\]", ca_block)
+    assert len(us_states) == 50
+    assert "California" in us_states and "Wyoming" in us_states and "New York" in us_states
+    assert len(ca_regions) == 13
+    assert "Ontario" in ca_regions and "Quebec" in ca_regions and "Yukon" in ca_regions
+
+
+def test_ensemble_and_style_profile_share_a_tabbed_workspace_without_blending_features(client):
+    signed_in(client)
+    html = client.get("/app").text
+    script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert 'data-linked-tab="ensemble"' in html and 'data-linked-tab="profile"' in html
+    assert 'data-linked-panel="ensemble"' in html and 'data-linked-panel="profile"' in html
+    assert 'data-view-panel="profile"' not in html
+    assert 'data-view="profile"' not in html
+    assert "catalogue-photo-note" not in html
+    assert "Ensemble uses real fashion photographs for style inspiration." not in html
+    assert "function switchStyleWorkspaceTab(tab)" in script
+    assert "if (state.activeStyleWorkspaceTab === 'profile') renderProfileChoices();" in script
+
+
+def test_catalogue_recommendations_offer_try_on_without_wardrobe_fallback():
+    assert all(item["try_on_supported"] for item in ITEMS)
+    for item in ITEMS:
+        if item["item_type"] == "accessory":
+            assert item["try_on_kind"] in {"bag", "hat", "scarf", "shoes"}
+    script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    card_function = re.search(r"function renderStyleCard\(item, savedView = false\) \{([\s\S]*?)\n  \}", script).group(1)
+    assert "data-try-on=\"${escapeHTML(item.id)}\"" in card_function
+    assert "Try on from My wardrobe" not in card_function
+    assert "if (!state.wardrobeItems.length || !recommendations.length)" in script
 
 
 def test_profile_skin_summary_is_read_only_and_updates_after_new_analysis(client):
@@ -287,7 +340,8 @@ def test_signin_opens_mystyle_workspace(client):
     assert response.status_code == 200
     assert 'data-view="discover"' in response.text
     assert 'data-view="quiz"' in response.text
-    assert 'data-view="profile"' in response.text
+    assert 'data-linked-tab="profile"' in response.text
+    assert 'id="linked-panel-profile"' in response.text
     assert "WornOnTV" not in response.text
     assert csrf in response.text
 
@@ -621,7 +675,7 @@ def test_ensemble_navigation_is_icon_free_and_recommendations_lock_while_loading
     assert 'id="edit-summary"' not in html
     assert 'id="recommendation-source"' not in html
     assert 'class="user-avatar"' not in html
-    assert 'class="side-nav-link is-active" data-view="discover" type="button">Ensemble</button>' in html
+    assert 'class="side-nav-link is-active" data-view="discover" type="button">Style &amp; Ensemble</button>' in html
     assert 'class="side-nav-link" data-view="skin-analysis" type="button">Skin analysis</button>' in html
     assert "state.recommendationsLoading" in script
     assert "aria-busy" in script

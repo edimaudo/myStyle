@@ -1,4 +1,5 @@
 """Manually curated real fashion-photo references. No generated garment illustrations.
+All catalogue clothing photos and supported accessory types can be sent for try-on after user consent.
 
 Every row uses a unique Pexels photo ID. Photos show actual people wearing clothes or
 accessories; labels stick to the look described for that photo rather than inventing a product.
@@ -124,7 +125,7 @@ def _build_item(row: tuple) -> dict:
         "image_credit": "Photo via Pexels", "image_disclaimer": "Real fashion photo used for styling inspiration; not necessarily the exact product sold by retailers.",
         "image_kind": "photo", "photographer_source": "Pexels",
         "shop_query": query, "gender_tags": [gender], "item_type": item_type,
-        "pattern": "solid", "try_on_supported": bool(try_on_supported),
+        "pattern": "solid", "try_on_supported": bool(item_type == "clothing" or try_on_kind in {"bag", "hat", "scarf", "shoes"}),
     }
     if try_on_kind:
         item["try_on_kind"] = try_on_kind

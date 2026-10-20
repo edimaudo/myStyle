@@ -40,7 +40,6 @@ html[data-theme="dark"] .marketing-nav .font-control button[aria-pressed="true"]
 
 /* Real-photo references, retailer purchase links, and personal wardrobe. */
 .style-card-media img[data-style-image] { object-fit: cover; padding: 0; background: var(--surface-muted); }
-.catalogue-photo-note { margin: -13px 0 22px; max-width: 900px; color: var(--ink-soft); font-size: .83rem; line-height: 1.55; }
 .wardrobe-layout { display: grid; grid-template-columns: minmax(285px, 350px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .wardrobe-add-card { min-width: 0; }
 .wardrobe-form { display: grid; gap: 13px; }
@@ -81,7 +80,6 @@ html[data-theme="dark"] .marketing-nav .font-control button[aria-pressed="true"]
 @media (max-width: 560px) {
   .wardrobe-grid { grid-template-columns: 1fr; }
   .wardrobe-form .form-grid { grid-template-columns: 1fr; }
-  .catalogue-photo-note { margin-top: -8px; }
 }
 
 /* Real garment photography, shopping choices, and wardrobe matches. */
@@ -94,7 +92,6 @@ html[data-theme="dark"] .marketing-nav .font-control button[aria-pressed="true"]
 .style-photo-credit:hover { color: var(--blue-ink); }
 .style-card-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .style-card-actions .button { width: 100%; min-height: 39px; }
-.catalogue-photo-note { max-width: 940px; }
 .ensemble-wardrobe-matches { margin: 22px 0 26px; padding: 17px 0 21px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .wardrobe-match-heading h2 { margin: 0; font-size: 1.2rem; }
 .wardrobe-match-heading p { margin: 5px 0 15px; color: var(--ink-soft); font-size: .85rem; line-height: 1.5; }
@@ -167,3 +164,7 @@ html[data-theme="dark"] .style-card-media[data-image-state="error"] .style-image
   .wardrobe-match-card > img { width: 90px; height: 112px; }
   .buy-dialog { padding: 18px; }
 }
+
+/* Ensemble and Style profile share one workspace but retain separate tab panels. */
+.style-workspace-tabs { margin-top: 8px; }
+.style-workspace-panel[hidden] { display: none !important; }

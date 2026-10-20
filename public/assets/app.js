@@ -19,10 +19,30 @@
     ['150', 'Up to 150'], ['200', 'Up to 200'], ['250', 'Up to 250'], ['300', 'Up to 300'],
     ['any', 'No fixed budget']
   ];
+  const REGIONS = {
+    CA: [
+      ['AB', 'Alberta'], ['BC', 'British Columbia'], ['MB', 'Manitoba'], ['NB', 'New Brunswick'],
+      ['NL', 'Newfoundland and Labrador'], ['NT', 'Northwest Territories'], ['NS', 'Nova Scotia'],
+      ['NU', 'Nunavut'], ['ON', 'Ontario'], ['PE', 'Prince Edward Island'], ['QC', 'Quebec'],
+      ['SK', 'Saskatchewan'], ['YT', 'Yukon']
+    ],
+    US: [
+      ['AL', 'Alabama'], ['AK', 'Alaska'], ['AZ', 'Arizona'], ['AR', 'Arkansas'], ['CA', 'California'],
+      ['CO', 'Colorado'], ['CT', 'Connecticut'], ['DE', 'Delaware'], ['FL', 'Florida'], ['GA', 'Georgia'],
+      ['HI', 'Hawaii'], ['ID', 'Idaho'], ['IL', 'Illinois'], ['IN', 'Indiana'], ['IA', 'Iowa'],
+      ['KS', 'Kansas'], ['KY', 'Kentucky'], ['LA', 'Louisiana'], ['ME', 'Maine'], ['MD', 'Maryland'],
+      ['MA', 'Massachusetts'], ['MI', 'Michigan'], ['MN', 'Minnesota'], ['MS', 'Mississippi'], ['MO', 'Missouri'],
+      ['MT', 'Montana'], ['NE', 'Nebraska'], ['NV', 'Nevada'], ['NH', 'New Hampshire'], ['NJ', 'New Jersey'],
+      ['NM', 'New Mexico'], ['NY', 'New York'], ['NC', 'North Carolina'], ['ND', 'North Dakota'], ['OH', 'Ohio'],
+      ['OK', 'Oklahoma'], ['OR', 'Oregon'], ['PA', 'Pennsylvania'], ['RI', 'Rhode Island'], ['SC', 'South Carolina'],
+      ['SD', 'South Dakota'], ['TN', 'Tennessee'], ['TX', 'Texas'], ['UT', 'Utah'], ['VT', 'Vermont'],
+      ['VA', 'Virginia'], ['WA', 'Washington'], ['WV', 'West Virginia'], ['WI', 'Wisconsin'], ['WY', 'Wyoming']
+    ]
+  };
   const state = {
     db: null, profile: structuredClone(DEFAULT_PROFILE), settings: { theme: 'light', fontSize: 'medium' },
     catalog: { items: [], palettes: [], styles: [], occasions: [] }, config: {},
-    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, queuedRecommendation: null, activeEnsembleTab: 'clothing', cachedImages: { skinAnalysis: null, tryOn: null }, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, wardrobeItems: [], wardrobeFilter: 'all', wardrobeObjectUrls: [], ensembleWardrobeObjectUrls: [], walkthroughStep: 0
+    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, queuedRecommendation: null, activeEnsembleTab: 'clothing', activeStyleWorkspaceTab: 'ensemble', cachedImages: { skinAnalysis: null, tryOn: null }, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, wardrobeItems: [], wardrobeFilter: 'all', wardrobeObjectUrls: [], ensembleWardrobeObjectUrls: [], walkthroughStep: 0
   };
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -197,6 +217,18 @@
   }
 
   function currencyLabel() { return COUNTRY() === 'US' ? '$ USD' : '$ CAD'; }
+  function renderRegionOptions(preferredRegion = state.profile.region || '') {
+    const select = $('#profile-region');
+    if (!select) return;
+    const regions = REGIONS[COUNTRY()] || REGIONS.CA;
+    const preferred = String(preferredRegion || '').trim().toLowerCase();
+    const matchingRegion = regions.find(([code, name]) => code.toLowerCase() === preferred || name.toLowerCase() === preferred);
+    const selectedName = matchingRegion?.[1] || '';
+    select.innerHTML = `<option value="">Select a province or state</option>${regions.map(([code, name]) => `<option value="${escapeHTML(name)}" data-region-code="${code}">${escapeHTML(name)}</option>`).join('')}`;
+    select.value = selectedName;
+    state.profile.region = selectedName;
+  }
+
   function renderBudgetOptions() {
     const options = BUDGETS.map(([value, label]) => `<option value="${value}">${value === 'any' ? label : `${label} ${CURRENCY()}`}</option>`).join('');
     ['#profile-budget', '#quiz-budget'].forEach(selector => {
@@ -227,10 +259,10 @@
     const setValue = (selector, value, fallback = '') => { const el = $(selector); if (el) el.value = value ?? fallback; };
     setValue('#display-name', state.profile.displayName, 'myStyle Member');
     setValue('#profile-country', state.profile.country, 'CA');
+    renderRegionOptions(state.profile.region);
     setValue('#profile-gender-preference', state.profile.genderPreference, 'all');
     setValue('#quiz-gender-preference', state.profile.genderPreference, 'all');
     setValue('#profile-city', state.profile.city);
-    setValue('#profile-region', state.profile.region);
     setValue('#profile-season', state.profile.season, 'auto');
     setValue('#profile-climate', state.profile.climate, 'variable');
     setValue('#profile-budget', String(state.profile.budget ?? 'any'), 'any');
@@ -267,7 +299,7 @@
     const season = meta.season || activeSeason();
     const seasonName = meta.season_label || SEASON_NAMES[season] || 'Seasonal';
     const climateName = meta.climate_label || ({ cold: 'Cold-weather layers', variable: 'Variable-weather layers', mild: 'Mild-climate dressing', warm: 'Warm-weather pieces' }[state.profile.climate] || 'Season-aware');
-    const location = [state.profile.city, state.profile.region, COUNTRY() === 'CA' ? 'Canada' : 'United States'].filter(Boolean).join(', ');
+    const location = [state.profile.region, state.profile.city, COUNTRY() === 'CA' ? 'Canada' : 'United States'].filter(Boolean).join(', ');
     const heroLabel = $('#hero-season-label');
     if (heroLabel) heroLabel.textContent = `${seasonName} recommendations for you`;
     const seasonPill = $('#season-weather-pill');
@@ -349,8 +381,10 @@
     const targetPrice = item.target_price ?? (COUNTRY() === 'US' ? item.target_usd : item.target_cad);
     const tags = [...(item.style_tags || []).slice(0, 3), item.category].map(tag => `<span>${escapeHTML(tag)}</span>`).join('');
     const photoCredit = item.image_source_url ? `<a class="style-photo-credit" href="${escapeHTML(item.image_source_url)}" target="_blank" rel="noopener noreferrer">Photo via Pexels</a>` : '';
-    const canTry = Boolean(item.try_on_supported && item.image_kind === 'photo' && item.item_type === 'clothing');
-    const actions = `<button class="button button-primary" data-buy-item="${escapeHTML(item.id)}" type="button">Buy / find similar</button>${canTry ? `<button class="button button-outline" data-try-on="${escapeHTML(item.id)}" type="button">Virtual try-on</button>` : `<button class="button button-outline" data-view="wardrobe" type="button">Try on from My wardrobe</button>`}${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}`;
+    const accessoryKind = item.try_on_kind || item.accessory_kind || '';
+    const tryOnTypeSupported = item.item_type === 'clothing' || (item.item_type === 'accessory' && ['bag', 'hat', 'scarf', 'shoes'].includes(accessoryKind));
+    const canTry = Boolean(item.try_on_supported && item.image_kind === 'photo' && tryOnTypeSupported);
+    const actions = `<button class="button button-primary" data-buy-item="${escapeHTML(item.id)}" type="button">Buy / find similar</button>${canTry ? `<button class="button button-outline" data-try-on="${escapeHTML(item.id)}" type="button">Virtual try-on</button>` : ''}${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}`;
     return `<article class="style-card" data-item-card="${escapeHTML(item.id)}">
       <div class="style-card-media" data-image-state="loading"><img data-style-image src="${escapeHTML(item.image_url)}" alt="Fashion photograph showing ${escapeHTML(item.name)}; listed colours: ${(item.colors || []).slice(0, 3).map(escapeHTML).join(', ')}" loading="lazy" decoding="async"><div class="style-image-fallback"><span>Photo unavailable</span><strong>${escapeHTML(item.name)}</strong></div><span class="style-card-season">${escapeHTML(seasonBadge)}</span><button class="save-style-button" data-save-item="${escapeHTML(item.id)}" type="button" aria-pressed="${String(saved)}" aria-label="${saved ? 'Remove from' : 'Save to'} my saved pieces">${saved ? '♥' : '♡'}</button></div>
       <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A style reference to consider for your wardrobe.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div>${photoCredit}<div class="style-card-actions">${actions}</div></div>
@@ -412,6 +446,19 @@
     grid.innerHTML = items.map(item => renderStyleCard(item, false)).join('');
     bindStyleImages(grid);
     renderEnsembleWardrobeMatches();
+  }
+
+  function switchStyleWorkspaceTab(tab) {
+    state.activeStyleWorkspaceTab = tab === 'profile' ? 'profile' : 'ensemble';
+    $$('[data-linked-tab]').forEach(button => {
+      const active = button.dataset.linkedTab === state.activeStyleWorkspaceTab;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    $$('[data-linked-panel]').forEach(panel => { panel.hidden = panel.dataset.linkedPanel !== state.activeStyleWorkspaceTab; });
+    if (state.activeStyleWorkspaceTab === 'profile') renderProfileChoices();
+    else renderEnsembleWardrobeMatches();
   }
 
   function switchEnsembleTab(tab) {
@@ -945,12 +992,12 @@
   }
 
   const WALKTHROUGH_STEPS = [
-    { title: 'Welcome to myStyle', copy: 'Use this walkthrough to learn the main parts of the app. You can move back, skip, or finish at any time.', view: 'discover' },
+    { title: 'Welcome to myStyle', copy: 'Use this walkthrough to learn the main parts of the app. You can move back, skip, or finish at any time.', view: 'discover', linkedTab: 'ensemble' },
     { title: 'Style quiz', copy: 'Choose a style direction, occasions, colour palette, gender preference and budget. The answers create your starting recommendations.', view: 'quiz' },
-    { title: 'Ensemble: clothing', copy: 'Browse the Clothing tab, search for concepts, open similar-shopping searches, try on an item or save it for later.', view: 'discover', tab: 'clothing' },
-    { title: 'Ensemble: accessories', copy: 'After skin analysis, the Accessories tab shows bags, scarves, headwear and shoes ranked against detected colour cues.', view: 'discover', tab: 'accessories' },
+    { title: 'Ensemble: clothing', copy: 'Browse the Clothing tab, search for concepts, open similar-shopping searches, try on an item or save it for later.', view: 'discover', linkedTab: 'ensemble', tab: 'clothing' },
+    { title: 'Ensemble: accessories', copy: 'After skin analysis, the Accessories tab shows bags, scarves, headwear and shoes ranked against detected colour cues.', view: 'discover', linkedTab: 'ensemble', tab: 'accessories' },
     { title: 'Skin analysis', copy: 'Upload a front-facing selfie and consent to YouCam processing. Detected colour values become visible here and guide accessories.', view: 'skin-analysis' },
-    { title: 'Style profile', copy: 'Adjust gender preference, region, season, fit, sizes, colour scheme and budget. Save changes to refresh recommendations.', view: 'profile' },
+    { title: 'Style profile', copy: 'Adjust country and province or state, season, fit, sizes, colour scheme and budget. Save changes to refresh recommendations.', view: 'discover', linkedTab: 'profile' },
     { title: 'Saved pieces', copy: 'Use the heart to keep catalogue concepts in a shortlist for later.', view: 'saved' },
     { title: 'My wardrobe', copy: 'Add photos of clothes and accessories you already own. They stay in this browser, and supported pieces can be used for virtual try-on.', view: 'wardrobe' },
     { title: 'Virtual try-on', copy: 'Try on your own clothing photo or supported accessory with your saved try-on photo. Processing requires consent and a configured service key.', view: 'wardrobe' }
@@ -965,6 +1012,7 @@
     $('#walkthrough-previous').disabled = state.walkthroughStep === 0;
     $('#walkthrough-next').textContent = state.walkthroughStep === WALKTHROUGH_STEPS.length - 1 ? 'Finish' : 'Next';
     if (step.view) switchView(step.view);
+    if (step.linkedTab) switchStyleWorkspaceTab(step.linkedTab);
     if (step.tab) switchEnsembleTab(step.tab);
   }
 
@@ -1049,6 +1097,7 @@
   }
 
   function switchView(view) {
+    if (view === 'profile') { view = 'discover'; state.activeStyleWorkspaceTab = 'profile'; }
     state.currentView = view;
     $$('.app-view').forEach(panel => {
       const active = panel.dataset.viewPanel === view;
@@ -1056,10 +1105,9 @@
       panel.hidden = !active;
     });
     $$('.side-nav-link[data-view]').forEach(button => button.classList.toggle('is-active', button.dataset.view === view));
-    if (view === 'profile') { renderProfileChoices(); }
+    if (view === 'discover') switchStyleWorkspaceTab(state.activeStyleWorkspaceTab || 'ensemble');
     if (view === 'skin-analysis') renderSkinAnalysis(state.profile.skinAnalysis);
     if (view === 'saved') renderSaved();
-    if (view === 'discover') renderSaved();
     if (view === 'wardrobe') renderWardrobe();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -1069,6 +1117,7 @@
     try {
       state.profile.displayName = $('#display-name')?.value.trim() || 'myStyle Member';
       state.profile.country = $('#profile-country')?.value || 'CA';
+      renderRegionOptions($('#profile-region')?.value || state.profile.region);
       state.profile.genderPreference = normalizeGenderPreference($('#profile-gender-preference')?.value || state.profile.genderPreference || 'all');
       state.profile.city = $('#profile-city')?.value.trim() || '';
       state.profile.region = $('#profile-region')?.value.trim() || '';
@@ -1111,6 +1160,7 @@
       await requestRecommendations('');
       showAlert('Your style quiz is saved. Ensemble recommendations have been updated.', 'good');
       switchView('discover');
+      switchStyleWorkspaceTab('ensemble');
     } catch (error) { showAlert(`Could not save quiz answers: ${error.message}`, 'error'); }
   }
 
@@ -1167,6 +1217,8 @@
 
   function attachEvents() {
     document.addEventListener('click', async event => {
+      const linkedTabButton = event.target.closest('[data-linked-tab]');
+      if (linkedTabButton) { switchView('discover'); switchStyleWorkspaceTab(linkedTabButton.dataset.linkedTab); return; }
       const viewButton = event.target.closest('[data-view]');
       if (viewButton) { switchView(viewButton.dataset.view); return; }
       const buyButton = event.target.closest('[data-buy-item]');
@@ -1208,7 +1260,15 @@
     $('#save-profile-top')?.addEventListener('click', () => saveProfile());
     $('#quiz-form')?.addEventListener('submit', submitQuiz);
     $('#quick-palette-form')?.addEventListener('submit', applyQuickPalette);
-    $('#profile-country')?.addEventListener('change', () => { renderBudgetOptions(); });
+    $('#profile-country')?.addEventListener('change', () => {
+      state.profile.country = $('#profile-country')?.value || 'CA';
+      state.profile.region = '';
+      renderRegionOptions('');
+      const city = $('#profile-city');
+      if (city) city.value = '';
+      state.profile.city = '';
+      renderBudgetOptions();
+    });
     $('#refresh-edit')?.addEventListener('click', () => requestRecommendations(state.lastQuery));
     $('#style-search-form')?.addEventListener('submit', event => { event.preventDefault(); requestRecommendations($('#style-search')?.value.trim() || ''); });
     $('#clear-style-search')?.addEventListener('click', () => { $('#style-search').value = ''; requestRecommendations(''); });
