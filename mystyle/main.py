@@ -583,9 +583,10 @@ async def signout_page(request: Request, done: bool = False):
 @app.post("/signout")
 async def signout(request: Request, csrf: str = Form(...)):
     expected_csrf = str(request.session.get("csrf_token", ""))
-    if expected_csrf and secrets.compare_digest(csrf, expected_csrf):
-        request.session.clear()
-    return RedirectResponse("/signout?done=1", status_code=303)
+    if not expected_csrf or not secrets.compare_digest(csrf, expected_csrf):
+        raise HTTPException(status_code=403, detail="Your session expired. Please try signing out again.")
+    request.session.clear()
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/app", response_class=HTMLResponse)

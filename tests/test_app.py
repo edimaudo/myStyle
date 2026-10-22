@@ -387,6 +387,29 @@ def test_signin_opens_mystyle_workspace(client):
     assert csrf in response.text
 
 
+def test_signout_clears_session_and_redirects_to_landing_page(client):
+    app_csrf = signed_in(client)
+    response = client.get("/signout")
+    assert response.status_code == 200
+    csrf = re.search(r'name="csrf" value="([^"]+)"', response.text).group(1)
+    response = client.post("/signout", data={"csrf": csrf}, follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    landing = client.get("/")
+    assert landing.status_code == 200
+    assert "Build my style profile" in landing.text
+    protected = client.get("/app", follow_redirects=False)
+    assert protected.status_code == 303
+    assert protected.headers["location"].startswith("/signin")
+
+
+def test_signout_rejects_invalid_csrf_without_clearing_session(client):
+    signed_in(client)
+    response = client.post("/signout", data={"csrf": "invalid-token"}, follow_redirects=False)
+    assert response.status_code == 403
+    assert client.get("/app", follow_redirects=False).status_code == 200
+
+
 def test_skin_analysis_sits_immediately_below_ensemble_in_sidebar(client):
     signed_in(client)
     response = client.get("/app")
