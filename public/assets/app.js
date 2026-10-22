@@ -342,21 +342,94 @@
   };
   function colorHex(color) { const key = String(color).toLowerCase(); return COLOR_HEX[key] || '#b4b5b0'; }
 
+  function productFocus(item) {
+    const name = String(item.name || '').trim();
+    const category = String(item.category || '').trim().toLowerCase();
+    const patterns = {
+      outerwear: /\b(?:[\w-]+\s+){0,2}(?:coat|jacket|blazer|parka|trench|windbreaker)\b/i,
+      layering: /\b(?:[\w-]+\s+){0,2}(?:overshirt|shacket|cardigan|sweater|knit|jacket|scarf|shirt)\b/i,
+      tops: /\b(?:[\w-]+\s+){0,2}(?:t-shirt|tshirt|tee|shirt|blouse|polo|top)\b/i,
+      knitwear: /\b(?:[\w-]+\s+){0,2}(?:sweater|cardigan|knit|jumper)\b/i,
+      denim: /\b(?:[\w-]+\s+){0,2}(?:denim jacket|jeans|denim)\b/i,
+      bottoms: /\b(?:[\w-]+\s+){0,2}(?:trousers|pants|jeans|shorts|skirt)\b/i,
+      skirts: /\b(?:[\w-]+\s+){0,2}(?:skirt)\b/i,
+      'one-piece': /\b(?:[\w-]+\s+){0,2}(?:jumpsuit|romper|dress)\b/i,
+      workwear: /\b(?:[\w-]+\s+){0,2}(?:blazer|trousers|shirt|pants)\b/i,
+      sport: /\b(?:[\w-]+\s+){0,2}(?:jacket|leggings|joggers|track pants|sportswear|shorts)\b/i,
+      evening: /\b(?:[\w-]+\s+){0,2}(?:dress|top|heels)\b/i,
+      bags: /\b(?:[\w-]+\s+){0,2}(?:crossbody|messenger|briefcase|bag)\b/i,
+      scarves: /\b(?:[\w-]+\s+){0,2}(?:scarf)\b/i,
+      hats: /\b(?:[\w-]+\s+){0,2}(?:hat|cap)\b/i,
+      shoes: /\b(?:[\w-]+\s+){0,2}(?:boots|shoes|sneakers)\b/i,
+      accessories: /\b(?:[\w-]+\s+){0,2}(?:watch|glasses|sunglasses|accessories)\b/i
+    };
+    let pattern = patterns[category];
+    if (!pattern) pattern = /\b(?:[\w-]+\s+){0,2}(?:coat|jacket|blazer|overshirt|sweater|cardigan|t-shirt|tee|shirt|blouse|trousers|pants|jeans|shorts|skirt|dress|jumpsuit|boots|shoes|bag|scarf|hat|cap)\b/i;
+    const match = name.match(pattern);
+    if (match?.[0]) return match[0].replace(/\s+/g, ' ').trim();
+    const fallbacks = {
+      outerwear: 'jacket', layering: 'layering piece', tops: 'shirt', knitwear: 'sweater', denim: 'denim clothing',
+      bottoms: 'trousers', skirts: 'skirt', 'one-piece': 'jumpsuit', workwear: 'workwear clothing', sport: 'sportswear',
+      evening: 'evening clothing', bags: 'bag', scarves: 'scarf', hats: 'hat', shoes: 'shoes', accessories: 'accessories'
+    };
+    return fallbacks[category] || 'clothing';
+  }
+
+  function productSearchQuery(item) {
+    const focus = productFocus(item);
+    const focusKey = focus.toLowerCase();
+    const neutralColours = new Set(['neutral', 'earth', 'dark', 'multicolour', 'multicolor']);
+    const colours = (item.colors || []).filter(colour => {
+      const value = String(colour).toLowerCase();
+      return !neutralColours.has(value) && !focusKey.includes(value);
+    }).slice(0, 2);
+    const preference = normalizeGenderPreference(state.profile.genderPreference);
+    const itemGender = (item.gender_tags || []).find(value => ['men', 'women'].includes(value));
+    const audience = preference === 'men' || preference === 'women' ? preference : itemGender;
+    const audienceTerm = audience === 'men' ? "men's" : audience === 'women' ? "women's" : '';
+    const budget = state.profile.budget;
+    const budgetTerm = budget !== undefined && budget !== null && budget !== '' && budget !== 'any' && Number.isFinite(Number(budget))
+      ? `under ${CURRENCY() === 'CAD' ? 'CAD' : 'USD'} ${Math.round(Number(budget))}` : '';
+    return [audienceTerm, focus, ...colours, budgetTerm, COUNTRY() === 'CA' ? 'Canada' : 'United States'].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function simonsBrowseUrl(item) {
+    const preference = normalizeGenderPreference(state.profile.genderPreference);
+    const itemGender = (item.gender_tags || []).find(value => ['men', 'women'].includes(value));
+    const audience = preference === 'men' || preference === 'women' ? preference : itemGender;
+    const category = String(item.category || '').toLowerCase();
+    if (audience === 'women') {
+      if (['outerwear', 'jackets'].includes(category)) return 'https://www.simons.ca/en/women-clothing/coats-jackets--6685';
+      if (category === 'knitwear') return 'https://www.simons.ca/en/women-clothing/sweaters--6667';
+      if (category === 'skirts') return 'https://www.simons.ca/en/women-clothing--6660';
+      return 'https://www.simons.ca/en/women-clothing--6660';
+    }
+    if (audience === 'men') {
+      if (['outerwear', 'jackets'].includes(category)) return 'https://www.simons.ca/en/men-clothing/coats-jackets--6737';
+      if (['tops', 'layering'].includes(category)) return 'https://www.simons.ca/en/men-clothing/shirts--6720';
+    }
+    return 'https://www.simons.ca/en';
+  }
+
   function retailerChoices(item) {
-    const query = String(item.shop_query || `${item.name || 'clothing'} ${(item.colors || []).slice(0, 3).join(' ')}`).trim();
+    const query = productSearchQuery(item);
     const q = encodeURIComponent(query);
-    if (COUNTRY() === 'US') return [
-      { name: 'Target', url: `https://www.target.com/s?searchTerm=${q}` },
-      { name: "Macy's", url: `https://www.macys.com/shop/search/Results?keyword=${q}` },
-      { name: 'Nordstrom', url: `https://www.nordstrom.com/sr?origin=keywordsearch&keyword=${q}` },
-      { name: 'Old Navy', url: `https://oldnavy.gap.com/browse/search.do?searchText=${q}` },
-      { name: 'UNIQLO', url: `https://www.uniqlo.com/us/en/search?q=${q}` }
-    ];
-    return [
-      { name: 'UNIQLO Canada', url: `https://www.uniqlo.com/ca/en/search?q=${q}` },
-      { name: 'Simons', url: `https://www.simons.ca/en/search?query=${q}` },
-      { name: 'Amazon Canada', url: `https://www.amazon.ca/s?k=${q}` }
-    ];
+    const choices = [{ name: 'Compare live product listings', url: `https://www.google.com/search?tbm=shop&q=${q}`, detail: 'Compare current products, prices and retailers' }];
+    if (COUNTRY() === 'US') {
+      choices.push(
+        { name: 'Target', url: `https://www.target.com/s?searchTerm=${q}`, detail: 'Search Target products' },
+        { name: "Macy's", url: `https://www.macys.com/shop/search/Results?keyword=${q}`, detail: 'Search Macy’s products' },
+        { name: 'Old Navy', url: `https://oldnavy.gap.com/browse/search.do?searchText=${q}`, detail: 'Search Old Navy products' },
+        { name: 'UNIQLO US', url: `https://www.uniqlo.com/us/en/seaRch?q=${q}`, detail: 'Search UNIQLO products' }
+      );
+    } else {
+      choices.push(
+        { name: 'Amazon Canada', url: `https://www.amazon.ca/s?k=${q}`, detail: 'Search Canadian product listings' },
+        { name: 'Simons', url: simonsBrowseUrl(item), detail: 'Browse relevant products on Simons' },
+        { name: 'UNIQLO Canada', url: `https://www.uniqlo.com/ca/en/seaRch?q=${q}`, detail: 'Search UNIQLO products' }
+      );
+    }
+    return choices;
   }
 
   function openBuyDialog(itemId) {
@@ -368,12 +441,12 @@
     const container = $('#buy-retailer-links');
     if (!container) return;
     if (title) title.textContent = 'Shop similar items';
+    const searchQuery = productSearchQuery(item);
     if (subtitle) subtitle.textContent = `${item.name} · ${COUNTRY() === 'US' ? 'United States' : 'Canada'}`;
-    const choices = retailerChoices({
-      ...item,
-      shop_query: item.shop_query || `${item.name} ${(item.colors || []).slice(0, 3).join(' ')}`
-    });
-    container.innerHTML = choices.map(store => `<a class="buy-retailer-link" href="${escapeHTML(store.url)}" target="_blank" rel="noopener noreferrer"><span><strong>${escapeHTML(store.name)}</strong><small>Search the retailer's catalogue</small></span><span aria-hidden="true">↗</span></a>`).join('');
+    const choices = retailerChoices(item);
+    container.innerHTML = choices.map(store => `<a class="buy-retailer-link" href="${escapeHTML(store.url)}" target="_blank" rel="noopener noreferrer"><span><strong>${escapeHTML(store.name)}</strong><small>${escapeHTML(store.detail)}</small></span><span aria-hidden="true">↗</span></a>`).join('');
+    const disclaimer = $('.buy-disclaimer');
+    if (disclaimer) disclaimer.textContent = `Search terms: ${searchQuery}. These are live store or shopping searches, not an exact SKU match. Confirm the product, price, stock and sizing on the retailer's site.`;
     const dialog = $('#buy-dialog');
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');

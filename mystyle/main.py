@@ -251,6 +251,28 @@ def _season_compatible(item: dict[str, Any], season: str) -> bool:
     return season in seasons or "all" in seasons
 
 
+def _weather_compatible(item: dict[str, Any], season: str, climate: str) -> bool:
+    """Avoid recommending light outfits for cold or changeable fall/winter weather.
+
+    Catalogue season labels by themselves are too broad: a white shirt with plain
+    trousers should not be treated like a fall layering outfit in a four-season city.
+    Accessories remain eligible because their weather role is different from a full look.
+    """
+    if item.get("item_type") != "clothing" or season not in {"fall", "winter"}:
+        return True
+
+    climates = set(item.get("climates") or [])
+    if climate == "cold":
+        return "cold" in climates
+    if climate == "variable":
+        category = _normalise_text(item.get("category") or "")
+        layering_categories = {"outerwear", "layering", "knitwear", "jackets"}
+        if "cold" in climates:
+            return True
+        return category in layering_categories and "variable" in climates
+    return True
+
+
 def _country_currency(profile: dict[str, Any]) -> tuple[str, str]:
     country = _normalise_text(profile.get("country") or "ca")
     return ("CAD", "target_cad") if country in {"ca", "canada", "can"} else ("USD", "target_usd")
@@ -293,6 +315,7 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
     query_tokens = _query_tokens(query)
     guide = palette_guide(profile.get("skinAnalysis"))
     preferred_fit = _normalise_text(profile.get("fitPreference") or "balanced")
+    climate_preference = _normalise_text(profile.get("climate") or "variable")
     gender_preference = _normalise_gender_preference(profile.get("genderPreference") or "all")
     guide_palettes = set((guide or {}).get("palette_ids") or [])
     guide_colour_terms = _guide_colour_terms(guide)
@@ -312,6 +335,8 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
         # This is a seasonal edit, not a year-round catalogue sorted by a seasonal score.
         # Omit items not marked for the selected North American season.
         if not _season_compatible(item, season):
+            continue
+        if not _weather_compatible(item, season, climate_preference):
             continue
         target_price = float(item[price_field])
         if budget is not None and target_price > budget:
@@ -351,7 +376,7 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
             score += (4.0 if skin_palette_is_primary else 2.0) if palette_overlap else 0.0
             score += min(6.0 if skin_palette_is_primary else 3.0,
                          (1.75 if skin_palette_is_primary else 0.75) * colour_overlap)
-        climate = _normalise_text(profile.get("climate") or "variable")
+        climate = climate_preference
         if "all" in item_climates or climate in item_climates or (climate == "variable" and "mild" in item_climates):
             score += 3.0
         else:

@@ -32,6 +32,38 @@ def signed_in(client: TestClient) -> str:
 
 
 
+
+def test_fall_recommendations_respect_weather_and_exclude_unlayered_white_shirt_looks(client):
+    csrf = signed_in(client)
+    profile = {
+        "country": "CA", "season": "fall", "climate": "variable", "budget": "any",
+        "genderPreference": "men", "styleTags": ["classic", "casual"], "occasions": ["everyday", "work"],
+        "colorScheme": "earth", "fitPreference": "balanced",
+    }
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "limit": 16})
+    assert response.status_code == 200
+    items = response.json()["recommendations"]
+    ids = {item["id"] for item in items}
+    assert "look-men-white-shirt-casual-pants" not in ids
+    assert "look-men-white-oxford" not in ids
+    assert items
+    assert all(item["category"].lower() in {"outerwear", "layering", "knitwear", "jackets"} or "cold" in item.get("climates", []) for item in items)
+
+
+def test_light_white_shirt_catalogue_rows_are_not_tagged_for_fall():
+    items = {item["id"]: item for item in ITEMS}
+    for item_id in ("look-men-white-shirt-casual-pants", "look-men-white-oxford", "look-men-striped-shirt", "look-women-white-shirt"):
+        assert "fall" not in items[item_id]["seasons"]
+
+
+def test_seasonal_weather_gate_is_not_applied_to_accessory_references():
+    from mystyle.main import _weather_compatible
+    bag = next(item for item in ITEMS if item["id"] == "accessory-men-crossbody")
+    light_shirt = next(item for item in ITEMS if item["id"] == "look-men-white-shirt-casual-pants")
+    assert _weather_compatible(bag, "fall", "variable") is True
+    assert _weather_compatible(light_shirt, "fall", "variable") is False
+
+
 def test_gender_preference_filters_clothing_recommendations(client):
     csrf = signed_in(client)
     base = {"country": "CA", "season": "fall", "climate": "variable", "budget": "any", "styleTags": [], "occasions": [], "colorScheme": "earth"}
@@ -121,7 +153,9 @@ def test_catalogue_photography_and_shopping_controls_are_present(client):
     assert 'id="buy-dialog"' in html
     assert 'data-buy-item' in script
     assert "https://www.target.com/s?searchTerm=" in script
-    assert "https://www.nordstrom.com/sr?origin=keywordsearch" in script
+    assert "https://www.google.com/search?tbm=shop&q=" in script
+    assert "https://www.uniqlo.com/ca/en/seaRch?q=" in script
+    assert "https://www.simons.ca/en/women-clothing/coats-jackets--6685" in script
     assert "Photo via Pexels" in script
 
 
@@ -220,7 +254,10 @@ def test_ensemble_exposes_real_photo_buy_and_virtual_try_on_actions(client):
     assert "function openBuyDialog(itemId)" in script
     assert "function retailerChoices(item)" in script
     assert "https://www.target.com/s?searchTerm=" in script
-    assert "https://www.uniqlo.com/ca/en/search?q=" in script
+    assert "https://www.uniqlo.com/ca/en/seaRch?q=" in script
+    assert "function productSearchQuery(item)" in script
+    assert "function productFocus(item)" in script
+    assert "https://www.simons.ca/en/search?query=" not in script
     assert "function renderEnsembleWardrobeMatches()" in script
 
 
@@ -496,7 +533,7 @@ def test_skin_guided_palette_changes_ranking_when_analysis_is_applied():
     manual_scores = {item["id"]: item["match_score"] for item in main.rank_items(manual_palette, ITEMS, limit=len(ITEMS))}
     guided_items = main.rank_items(skin_guided_palette, ITEMS, limit=len(ITEMS))
     guided_scores = {item["id"]: item["match_score"] for item in guided_items}
-    assert guided_scores["look-men-blue-shirt-trousers"] > manual_scores["look-men-blue-shirt-trousers"]
+    assert guided_scores["look-men-navy-jacket"] > manual_scores["look-men-navy-jacket"]
     assert guided_scores["look-men-shirt-scarf"] < manual_scores["look-men-shirt-scarf"]
     assert any("skin analysis" in item["recommendation_reason"].lower() for item in guided_items)
 
@@ -665,9 +702,11 @@ def test_requested_ux_cleanup_and_no_unexplained_walkthrough(client):
     assert 'class="brand-mark' not in html
     assert "How Ensemble works" not in html
     assert "✳" not in html and "◈" not in client.get("/").text
-    assert "Photo size and framing" in html
-    assert "4,096 px" in html
-    assert "720 × 1,080 px" in html
+    assert "Choosing a good photo" in html
+    assert "Photo size and framing" not in html
+    assert "face centred" in html
+    assert "4,096 pixels" in html
+    assert "720 × 1,080 pixels" in html
     assert "sidebar-walkthrough" not in html
     assert 'data-view-panel="skin-analysis"' in html
     assert 'data-view="skin-analysis"' in html
