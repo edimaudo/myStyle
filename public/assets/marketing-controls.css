@@ -12,8 +12,8 @@
 .marketing-nav { gap: 21px; }
 .marketing-nav .site-display-controls { gap: 7px; }
 .marketing-nav .font-control { background: var(--surface); }
-.marketing-nav .font-control button[aria-pressed="true"] { color: #fff; background: var(--blue); }
-html[data-theme="dark"] .marketing-nav .font-control button[aria-pressed="true"] { color: #10213c; }
+.marketing-nav .font-control button[aria-pressed="true"] { color: var(--button-primary-ink, #fff); background: var(--blue); }
+html[data-theme="dark"] .marketing-nav .font-control button[aria-pressed="true"] { color: var(--button-primary-ink, #281620); }
 .marketing-footer { display: none; }
 .mystyle-marketing-footer { display: flex; }
 
@@ -146,11 +146,15 @@ html[data-theme="dark"] {
 }
 html[data-theme="dark"] .button-primary,
 html[data-theme="dark"] .marketing-nav .button-primary {
-  color: #281620;
-  background: #ffad8b;
-  border-color: #ffad8b;
+  color: var(--button-primary-ink, #281620);
+  background: var(--blue);
+  border-color: var(--blue);
 }
-html[data-theme="dark"] .button-primary:hover { background: #ffc3a8; border-color: #ffc3a8; color: #281620; }
+html[data-theme="dark"] .button-primary:hover {
+  background: var(--blue-hover);
+  border-color: var(--blue-hover);
+  color: var(--button-primary-ink, #281620);
+}
 html[data-theme="dark"] .mystyle-sidebar .side-nav-link.is-active { background: #39283f; border-left: 3px solid #ffad8b; }
 html[data-theme="dark"] .ensemble-tab.is-active { color: #ffc0a2; border-bottom-color: #ffad8b; }
 html[data-theme="dark"] .profile-skin-summary { background: #292130; }
@@ -168,3 +172,55 @@ html[data-theme="dark"] .style-card-media[data-image-state="error"] .style-image
 /* Ensemble and Style profile share one workspace but retain separate tab panels. */
 .style-workspace-tabs { margin-top: 8px; }
 .style-workspace-panel[hidden] { display: none !important; }
+
+
+/* Consistent button system across screens, themes, and the three font-size settings. */
+:root { --button-primary-ink: #ffffff; }
+html[data-theme="dark"] { --button-primary-ink: #281620; }
+.button {
+  min-height: max(40px, calc(44px * var(--font-scale, 1)));
+  padding: max(8px, calc(10px * var(--font-scale, 1))) max(12px, calc(15px * var(--font-scale, 1)));
+  border-radius: 6px;
+  font-size: .9rem;
+  font-weight: 700;
+  line-height: 1.25;
+  box-shadow: none;
+}
+.button-primary {
+  color: var(--button-primary-ink);
+  background: var(--blue);
+  border-color: var(--blue);
+}
+.button-primary:hover {
+  color: var(--button-primary-ink);
+  background: var(--blue-hover);
+  border-color: var(--blue-hover);
+}
+.button-outline {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line);
+}
+.button-outline:hover {
+  color: var(--ink);
+  background: var(--surface-muted);
+  border-color: var(--blue);
+}
+.button:focus-visible { outline-color: var(--focus-ring); }
+.style-card-actions .button {
+  min-height: max(38px, calc(39px * var(--font-scale, 1)));
+  padding: max(7px, calc(8px * var(--font-scale, 1))) max(8px, calc(9px * var(--font-scale, 1)));
+  font-size: .74rem;
+}
+.wardrobe-card-actions .button {
+  min-height: max(38px, calc(38px * var(--font-scale, 1)));
+  padding: max(7px, calc(7px * var(--font-scale, 1))) max(10px, calc(11px * var(--font-scale, 1)));
+  font-size: .82rem;
+}
+.wardrobe-match-actions .button {
+  min-height: max(36px, calc(36px * var(--font-scale, 1)));
+  padding: max(6px, calc(6px * var(--font-scale, 1))) max(9px, calc(10px * var(--font-scale, 1)));
+  font-size: .77rem;
+}
+.skin-profile-link { display: inline-flex; align-items: center; gap: 9px; }
+.skin-profile-link span { font-size: 1.1em; line-height: 1; }

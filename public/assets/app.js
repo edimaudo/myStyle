@@ -42,7 +42,7 @@
   const state = {
     db: null, profile: structuredClone(DEFAULT_PROFILE), settings: { theme: 'light', fontSize: 'medium' },
     catalog: { items: [], palettes: [], styles: [], occasions: [] }, config: {},
-    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, queuedRecommendation: null, activeEnsembleTab: 'clothing', activeStyleWorkspaceTab: 'ensemble', cachedImages: { skinAnalysis: null, tryOn: null }, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, wardrobeItems: [], wardrobeFilter: 'all', wardrobeObjectUrls: [], ensembleWardrobeObjectUrls: [], walkthroughStep: 0
+    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, recommendationController: null, activeEnsembleTab: 'clothing', activeStyleWorkspaceTab: 'ensemble', cachedImages: { skinAnalysis: null, tryOn: null }, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, wardrobeItems: [], wardrobeFilter: 'all', wardrobeObjectUrls: [], ensembleWardrobeObjectUrls: [], walkthroughStep: 0
   };
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -393,41 +393,21 @@
     return [audienceTerm, focus, ...colours, budgetTerm, COUNTRY() === 'CA' ? 'Canada' : 'United States'].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
   }
 
-  function simonsBrowseUrl(item) {
-    const preference = normalizeGenderPreference(state.profile.genderPreference);
-    const itemGender = (item.gender_tags || []).find(value => ['men', 'women'].includes(value));
-    const audience = preference === 'men' || preference === 'women' ? preference : itemGender;
-    const category = String(item.category || '').toLowerCase();
-    if (audience === 'women') {
-      if (['outerwear', 'jackets'].includes(category)) return 'https://www.simons.ca/en/women-clothing/coats-jackets--6685';
-      if (category === 'knitwear') return 'https://www.simons.ca/en/women-clothing/sweaters--6667';
-      if (category === 'skirts') return 'https://www.simons.ca/en/women-clothing--6660';
-      return 'https://www.simons.ca/en/women-clothing--6660';
-    }
-    if (audience === 'men') {
-      if (['outerwear', 'jackets'].includes(category)) return 'https://www.simons.ca/en/men-clothing/coats-jackets--6737';
-      if (['tops', 'layering'].includes(category)) return 'https://www.simons.ca/en/men-clothing/shirts--6720';
-    }
-    return 'https://www.simons.ca/en';
-  }
-
   function retailerChoices(item) {
     const query = productSearchQuery(item);
     const q = encodeURIComponent(query);
-    const choices = [{ name: 'Compare live product listings', url: `https://www.google.com/search?tbm=shop&q=${q}`, detail: 'Compare current products, prices and retailers' }];
-    if (COUNTRY() === 'US') {
-      choices.push(
-        { name: 'Target', url: `https://www.target.com/s?searchTerm=${q}`, detail: 'Search Target products' },
-        { name: "Macy's", url: `https://www.macys.com/shop/search/Results?keyword=${q}`, detail: 'Search Macy’s products' },
-        { name: 'Old Navy', url: `https://oldnavy.gap.com/browse/search.do?searchText=${q}`, detail: 'Search Old Navy products' },
-        { name: 'UNIQLO US', url: `https://www.uniqlo.com/us/en/seaRch?q=${q}`, detail: 'Search UNIQLO products' }
-      );
-    } else {
-      choices.push(
-        { name: 'Amazon Canada', url: `https://www.amazon.ca/s?k=${q}`, detail: 'Search Canadian product listings' },
-        { name: 'Simons', url: simonsBrowseUrl(item), detail: 'Browse relevant products on Simons' },
-        { name: 'UNIQLO Canada', url: `https://www.uniqlo.com/ca/en/seaRch?q=${q}`, detail: 'Search UNIQLO products' }
-      );
+    const shoppingCountry = COUNTRY() === 'CA' ? 'ca' : 'us';
+    const choices = [{
+      name: 'Compare live product listings',
+      url: `https://www.google.com/search?tbm=shop&gl=${shoppingCountry}&hl=en&q=${q}`,
+      detail: `Compare current ${shoppingCountry === 'ca' ? 'Canadian' : 'US'} products, prices and retailers`
+    }];
+    if (COUNTRY() === 'CA') {
+      choices.push({
+        name: 'Amazon Canada',
+        url: `https://www.amazon.ca/s?k=${q}`,
+        detail: 'Search Canadian product listings'
+      });
     }
     return choices;
   }
@@ -485,8 +465,12 @@
     const grid = $('#recommendation-grid');
     if (!grid) return;
     if (!items.length) {
-      const budget = state.profile.budget === 'any' ? 'your current filters' : `a ${money(Number(state.profile.budget))} per-piece target`;
-      grid.innerHTML = `<div class="no-results mystyle-no-results"><strong>No pieces matched ${escapeHTML(budget)}.</strong><p>Try widening your budget, changing the colour scheme, or removing a “Not for me” response.</p><button class="button button-outline" type="button" data-reset-dislikes="true">Reset hidden feedback</button></div>`;
+      if (state.lastQuery) {
+        grid.innerHTML = `<div class="no-results mystyle-no-results"><strong>No styles matched “${escapeHTML(state.lastQuery)}”.</strong><p>Try another garment, colour or style, or adjust your season and budget in Style profile.</p><button class="button button-outline" type="button" data-clear-style-search>Clear search</button></div>`;
+      } else {
+        const budget = state.profile.budget === 'any' ? 'your current filters' : `a ${money(Number(state.profile.budget))} per-piece target`;
+        grid.innerHTML = `<div class="no-results mystyle-no-results"><strong>No pieces matched ${escapeHTML(budget)}.</strong><p>Try widening your budget, changing the colour scheme, or removing a “Not for me” response.</p><button class="button button-outline" type="button" data-reset-dislikes="true">Reset hidden feedback</button></div>`;
+      }
       return;
     }
     grid.innerHTML = items.map(item => renderStyleCard(item, false)).join('');
@@ -514,11 +498,13 @@
     if (summary) {
       const colour = state.profile.skinAnalysis?.skin_color || '';
       summary.hidden = false;
-      summary.innerHTML = `<span class="accessory-skin-swatch" style="background:${escapeHTML(colour)}"></span><div><strong>${escapeHTML(guide.label)}</strong><p>Skin colour detected: ${escapeHTML(colour)}. Suggested accent colours: ${escapeHTML(guide.colors.join(', '))}.</p><small>Colour suggestions are approximate styling inspiration, not rules.</small></div>`;
+      summary.innerHTML = `<span class="accessory-skin-swatch" style="background:${escapeHTML(colour)}"></span><div><strong>${escapeHTML(guide.label)}</strong><p>Skin colour detected: ${escapeHTML(colour)}. Suggested accent colours: ${escapeHTML(guide.colors.join(', '))}.</p></div>`;
     }
-    if (status) status.textContent = items.length ? `${items.length} accessory ideas matched to your skin-analysis colour cues` : 'No accessories match the current season or budget. Adjust your profile and refresh.';
+    if (status) status.textContent = items.length ? `${items.length} accessory ideas matched to your skin-analysis colour cues` : (state.lastQuery ? `No accessory matches for “${state.lastQuery}”.` : 'No accessories match the current season or budget. Adjust your profile and refresh.');
     if (!items.length) {
-      grid.innerHTML = '<div class="no-results"><strong>No accessory matches found.</strong><p>Try adjusting your budget or season in Style profile.</p></div>';
+      grid.innerHTML = state.lastQuery
+        ? `<div class="no-results"><strong>No accessories matched “${escapeHTML(state.lastQuery)}”.</strong><p>Try another term or clear the search.</p></div>`
+        : '<div class="no-results"><strong>No accessory matches found.</strong><p>Try adjusting your budget or season in Style profile.</p></div>';
       return;
     }
     grid.innerHTML = items.map(item => renderStyleCard(item, false)).join('');
@@ -821,10 +807,7 @@
       } else {
         banner.hidden = false;
         $('#skin-insight-title').textContent = guide.label;
-        const cues = guide.colors.slice(0, 5).join(', ');
-        $('#skin-insight-copy').textContent = state.profile.colorScheme === 'selfie'
-          ? `Your skin analysis is guiding Ensemble’s colour ranking. Current colour cues: ${cues}. Recommendations still reflect your style, season, fit and budget. You can choose another palette in Style profile at any time.`
-          : `Ensemble also considers colour cues from your skin analysis alongside your selected palette: ${cues}. Choose another palette in Style profile at any time.`;
+        $('#skin-insight-copy').textContent = 'Your Style incorporates colour cues from your skin analysis alongside your selected palette';
       }
     }
   }
@@ -1139,42 +1122,55 @@
 
 
   async function requestRecommendations(query = '') {
-    if (state.recommendationsLoading) {
-      return new Promise(resolve => {
-        if (state.queuedRecommendation) {
-          state.queuedRecommendation.query = query;
-          state.queuedRecommendation.resolvers.push(resolve);
-        } else {
-          state.queuedRecommendation = { query, resolvers: [resolve] };
-        }
-      });
-    }
+    const cleanQuery = String(query || '').trim();
+    if (state.recommendationController) state.recommendationController.abort();
+    const controller = new AbortController();
+    state.recommendationController = controller;
     state.recommendationsLoading = true;
     const id = ++state.requestId;
-    state.lastQuery = query;
+    state.lastQuery = cleanQuery;
+
     const status = $('#recommendation-status');
-    if (status) status.textContent = 'Loading recommendations…';
+    if (status) status.textContent = cleanQuery ? 'Searching styles…' : 'Refreshing recommendations…';
     const grid = $('#recommendation-grid');
     if (grid) {
       grid.setAttribute('aria-busy', 'true');
-      if (!grid.children.length) grid.innerHTML = '<div class="loading-style-card"><span class="loading-spinner"></span><strong>Loading recommendations</strong><p>Matching your style, colours, season and budget.</p></div>';
+      grid.innerHTML = `<div class="loading-style-card"><span class="loading-spinner"></span><strong>${cleanQuery ? 'Searching the style catalogue' : 'Refreshing your style edit'}</strong><p>${cleanQuery ? 'Finding pieces that match your search and profile.' : 'Matching your style, colours, season and budget.'}</p></div>`;
     }
-    const triggers = [$('#refresh-edit'), $('#style-search-form button[type="submit"]'), $('#clear-style-search'), $('#quick-palette-form button[type="submit"]'), $('#quiz-form button[type="submit"]'), $('#profile-form button[type="submit"]'), $('#save-profile-top')].filter(Boolean);
+    const accessoryGrid = $('#accessory-grid');
+    if (state.activeEnsembleTab === 'accessories' && accessoryGrid) {
+      accessoryGrid.setAttribute('aria-busy', 'true');
+      accessoryGrid.innerHTML = '<div class="loading-style-card"><span class="loading-spinner"></span><strong>Updating accessories</strong></div>';
+    }
+    const statusNote = $('#accessory-status');
+    if (state.activeEnsembleTab === 'accessories' && statusNote) statusNote.textContent = 'Updating accessory ideas…';
+
+    // Keep search/clear available while a request is running. A newer request aborts
+    // the previous request rather than waiting behind a potentially slow response.
+    const triggers = [$('#refresh-edit'), $('#quick-palette-form button[type="submit"]'), $('#quiz-form button[type="submit"]'), $('#profile-form button[type="submit"]'), $('#save-profile-top')].filter(Boolean);
     const originalLabels = new Map();
     triggers.forEach(button => {
       originalLabels.set(button, button.innerHTML);
       button.disabled = true;
       button.setAttribute('aria-busy', 'true');
-      if (button.id === 'refresh-edit') button.textContent = 'Loading recommendations…';
+      if (button.id === 'refresh-edit') button.textContent = 'Refreshing…';
       else if (button.type === 'submit') button.textContent = 'Please wait…';
     });
     try {
-      const result = await apiFetch('/api/recommendations', { method: 'POST', body: JSON.stringify({ profile: state.profile, query, limit: 8 }) });
+      const result = await apiFetch('/api/recommendations', {
+        method: 'POST',
+        body: JSON.stringify({ profile: state.profile, query: cleanQuery, limit: 8 }),
+        signal: controller.signal
+      });
       if (id !== state.requestId) return false;
       state.recommendations = result.recommendations || [];
       state.accessoryRecommendations = result.accessories || [];
       updateSeasonDetails(result);
-      if (status) status.textContent = state.recommendations.length ? `${state.recommendations.length} recommendations` : 'No matches found';
+      if (status) {
+        status.textContent = cleanQuery
+          ? `${state.recommendations.length} search matches`
+          : `${state.recommendations.length} recommendations`;
+      }
       renderRecommendations(state.recommendations);
       renderAccessories(state.accessoryRecommendations);
       renderEnsembleWardrobeMatches();
@@ -1182,24 +1178,22 @@
       renderSkinAnalysis(state.profile.skinAnalysis);
       return true;
     } catch (error) {
-      if (id !== state.requestId) return false;
+      if (error.name === 'AbortError' || id !== state.requestId) return false;
       if (status) status.textContent = 'Could not load recommendations';
       if (grid) grid.innerHTML = `<div class="no-results"><strong>We couldn't load recommendations.</strong><p>${escapeHTML(error.message)}</p><button class="button button-outline" type="button" id="retry-edit">Try again</button></div>`;
       if (state.profile.skinAnalysis) renderAccessories(state.accessoryRecommendations);
       return false;
     } finally {
-      state.recommendationsLoading = false;
-      if (grid) grid.removeAttribute('aria-busy');
-      triggers.forEach(button => {
-        button.disabled = false;
-        button.removeAttribute('aria-busy');
-        if (originalLabels.has(button)) button.innerHTML = originalLabels.get(button);
-      });
-      const queued = state.queuedRecommendation;
-      if (queued) {
-        state.queuedRecommendation = null;
-        const succeeded = await requestRecommendations(queued.query);
-        queued.resolvers.forEach(resolve => resolve(succeeded));
+      if (id === state.requestId) {
+        state.recommendationsLoading = false;
+        state.recommendationController = null;
+        if (grid) grid.removeAttribute('aria-busy');
+        if (accessoryGrid) accessoryGrid.removeAttribute('aria-busy');
+        triggers.forEach(button => {
+          button.disabled = false;
+          button.removeAttribute('aria-busy');
+          if (originalLabels.has(button)) button.innerHTML = originalLabels.get(button);
+        });
       }
     }
   }
@@ -1343,6 +1337,12 @@
       const wardrobeFilter = event.target.closest('[data-wardrobe-filter]');
       if (wardrobeFilter) { state.wardrobeFilter = wardrobeFilter.dataset.wardrobeFilter; renderWardrobe(); return; }
       if (event.target.closest('[data-reset-dislikes]')) { await resetDislikes(); return; }
+      if (event.target.closest('[data-clear-style-search]')) {
+        const searchInput = $('#style-search');
+        if (searchInput) searchInput.value = '';
+        await requestRecommendations('');
+        return;
+      }
       if (event.target.closest('#retry-edit')) { await requestRecommendations(state.lastQuery); }
       const tabButton = event.target.closest('[data-ensemble-tab]');
       if (tabButton) { switchEnsembleTab(tabButton.dataset.ensembleTab); return; }

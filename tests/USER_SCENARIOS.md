@@ -24,6 +24,14 @@
 5. Save changes.
 6. Confirm currency changes (CAD / USD), the season badge changes, and items above the selected budget are excluded.
 
+## Ensemble search and shopping
+
+1. Search for a garment, colour, or style such as `navy jacket`, `casual trousers`, or `knitwear`.
+2. Confirm the results match the terms instead of returning unrelated catalogue cards.
+3. Search a term not represented in the catalogue and confirm a clear no-matches message appears.
+4. Clear the search and confirm the normal profile-based recommendations return promptly.
+5. Open Buy / Find Similar and confirm it offers Google Shopping comparisons and, for Canadian profiles, Amazon Canada only.
+
 ## Recommendation feedback
 
 1. On Ensemble, use Save on a card.

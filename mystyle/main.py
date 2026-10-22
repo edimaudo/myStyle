@@ -50,7 +50,6 @@ YCE_API_KEY = os.getenv("YCE_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
 MAX_UPLOAD_BYTES = 9_500_000
-RECOMMENDATION_AI_TIMEOUT_SECONDS = 7.5
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png"}
 SEASONS = {"spring", "summer", "fall", "winter"}
 SEASON_LABELS = {"spring": "Spring", "summer": "Summer", "fall": "Fall", "winter": "Winter"}
@@ -294,6 +293,52 @@ def _query_tokens(query: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", _normalise_text(query))) - stop
 
 
+_SEARCH_SYNONYMS: dict[str, set[str]] = {
+    "trouser": {"trousers", "pants", "slacks", "bottoms"},
+    "trousers": {"trouser", "pants", "slacks", "bottoms"},
+    "pant": {"pants", "trouser", "trousers", "bottoms"},
+    "pants": {"pant", "trouser", "trousers", "slacks", "bottoms"},
+    "jean": {"jeans", "denim", "pants", "trousers"},
+    "jeans": {"jean", "denim", "pants", "trousers"},
+    "shirt": {"shirts", "tops", "tee", "tshirt", "blouse", "buttondown"},
+    "shirts": {"shirt", "tops", "tee", "tshirt", "blouse", "buttondown"},
+    "top": {"tops", "shirt", "shirts", "blouse", "tee", "tshirt"},
+    "tops": {"top", "shirt", "shirts", "blouse", "tee", "tshirt"},
+    "tee": {"tshirt", "shirt", "shirts", "top", "tops"},
+    "tshirt": {"tee", "shirt", "shirts", "top", "tops"},
+    "sweater": {"knitwear", "knit", "jumper", "cardigan"},
+    "knitwear": {"sweater", "knit", "jumper", "cardigan"},
+    "jacket": {"jackets", "coat", "coats", "outerwear", "blazer"},
+    "coat": {"coats", "jacket", "jackets", "outerwear"},
+    "boot": {"boots", "shoes", "footwear"},
+    "boots": {"boot", "shoes", "footwear"},
+    "shoe": {"shoes", "sneaker", "sneakers", "footwear"},
+    "shoes": {"shoe", "sneaker", "sneakers", "footwear"},
+    "sneaker": {"sneakers", "shoe", "shoes", "trainers"},
+    "sneakers": {"sneaker", "shoe", "shoes", "trainers"},
+    "bag": {"bags", "tote", "crossbody", "backpack", "purse"},
+    "bags": {"bag", "tote", "crossbody", "backpack", "purse"},
+    "scarf": {"scarves", "wrap"},
+    "scarves": {"scarf", "wrap"},
+    "autumn": {"fall"},
+    "fall": {"autumn"},
+    "casual": {"everyday", "relaxed", "weekend"},
+    "everyday": {"casual", "relaxed", "weekend"},
+    "white": {"ivory", "ecru", "cream", "offwhite"},
+    "cream": {"ivory", "ecru", "white", "offwhite"},
+    "black": {"charcoal", "dark"},
+    "blue": {"navy", "denim", "cobalt", "sky"},
+    "navy": {"blue"},
+}
+
+
+def _expanded_query_tokens(tokens: set[str]) -> set[str]:
+    expanded = set(tokens)
+    for token in tokens:
+        expanded.update(_SEARCH_SYNONYMS.get(token, set()))
+    return expanded
+
+
 def _guide_colour_terms(guide: dict[str, Any] | None) -> set[str]:
     qualifiers = {"warm", "cool", "soft", "icy", "bright", "light", "deep"}
     terms: set[str] = set()
@@ -313,6 +358,7 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
     custom_colors = _query_tokens(str(profile.get("customColors") or ""))
     explicit_colors = {_normalise_text(x) for x in (profile.get("colorPreferences") or [])}
     query_tokens = _query_tokens(query)
+    expanded_query_tokens = _expanded_query_tokens(query_tokens)
     guide = palette_guide(profile.get("skinAnalysis"))
     preferred_fit = _normalise_text(profile.get("fitPreference") or "balanced")
     climate_preference = _normalise_text(profile.get("climate") or "variable")
@@ -353,6 +399,11 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
             *item.get("seasons", []), *item.get("occasions", []), item.get("shop_query", ""), item.get("subcategory", ""), *item.get("gender_tags", []),
         ]))
         searchable_tokens = set(re.findall(r"[a-z0-9]+", searchable))
+        matched_query_tokens = expanded_query_tokens & searchable_tokens
+        # Search is a true catalogue search: when the user enters a query, exclude
+        # items with no meaningful match instead of merely ranking arbitrary pieces.
+        if query_tokens and not matched_query_tokens:
+            continue
         score = 1.0
         if gender_preference in {"women", "men"} and gender_preference in gender_tags:
             score += 2.0
@@ -381,7 +432,7 @@ def rank_items(profile: dict[str, Any], items: list[dict[str, Any]], limit: int 
             score += 3.0
         else:
             score -= 1.0
-        score += 2.0 * len(query_tokens & searchable_tokens)
+        score += 5.0 * len(matched_query_tokens)
         if guide and scheme_ids and scheme_ids & item_palettes:
             score += 1.0
         enriched = dict(item)
@@ -571,7 +622,7 @@ class RecommendationRequest(BaseModel):
 @app.post("/api/recommendations")
 async def api_recommendations(body: RecommendationRequest, request: Request):
     require_session(request)
-    # Canonicalize legacy values before ranking and before passing the profile to Gemini.
+    # Normalize legacy saved profile values before deterministic ranking.
     profile = {**body.profile, "genderPreference": _normalise_gender_preference(body.profile.get("genderPreference"))}
     season = current_season(profile)
     currency, price_field = _country_currency(profile)
@@ -579,29 +630,6 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
     accessory_catalog = [item for item in ITEMS if item.get("item_type") == "accessory"]
     clothing_ranked = rank_items(profile, clothing_catalog, limit=len(clothing_catalog), query=body.query)
 
-    # Keep AI re-ranking bounded as the built-in catalogue grows. The deterministic
-    # ranker first applies hard gender, season, and budget constraints to every item;
-    # Gemini only re-orders the top candidate set and cannot introduce new IDs.
-    ai = None
-    ai_candidates = clothing_ranked[:40]
-    if GEMINI_API_KEY and ai_candidates:
-        try:
-            ai = await asyncio.wait_for(
-                gemini_rank_items(profile, body.query, ai_candidates),
-                timeout=RECOMMENDATION_AI_TIMEOUT_SECONDS,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Gemini personal styling ranking timed out; using deterministic matching")
-        except Exception:
-            logger.exception("Gemini personal styling request failed; using deterministic matching")
-    if ai:
-        by_id = {item["id"]: item for item in ai_candidates}
-        ordered = [by_id[i] for i in ai["item_ids"] if i in by_id]
-        ordered_ids = {item["id"] for item in ordered}
-        ordered.extend(item for item in ai_candidates if item["id"] not in ordered_ids)
-        ordered_ids = {item["id"] for item in ordered}
-        ordered.extend(item for item in clothing_ranked if item["id"] not in ordered_ids)
-        clothing_ranked = ordered
 
     guide = palette_guide(profile.get("skinAnalysis"))
     accessory_ranked: list[dict[str, Any]] = []
@@ -622,12 +650,12 @@ async def api_recommendations(body: RecommendationRequest, request: Request):
         "climate_label": CLIMATE_LABELS.get(_normalise_text(profile.get("climate") or "variable"), "Variable weather"),
         "country": "CA" if currency == "CAD" else "US",
         "currency": currency,
-        "source": "gemini" if ai else "profile-ranker",
-        "ai_status": "used" if ai else ("fallback" if GEMINI_API_KEY else "not_configured"),
-        "model": GEMINI_MODEL if ai else None,
-        "explanation": (ai or {}).get("explanation") or f"Ranked {len(clothing_ranked)} clothing concepts against your gender preference, palette, fit preferences, budget, lifestyle and {SEASON_LABELS[season].lower()} season.",
+        "source": "profile-ranker",
+        "ai_status": "deterministic_fast_path",
+        "model": None,
+        "explanation": f"Ranked {len(clothing_ranked)} clothing concepts against your search terms, gender preference, palette, fit preferences, budget, lifestyle and {SEASON_LABELS[season].lower()} season.",
         "skin_palette_guide": guide,
-        "catalogue_note": "Cards use curated real fashion photographs as style references, not guaranteed exact retail products. Buy opens official retailer search pages for similar items. Check current price, stock, sizing, shipping and return terms with each store.",
+        "catalogue_note": "Cards use curated real fashion photographs as style references, not guaranteed exact retail products. Shop similar items compares live product listings and provides Amazon Canada search when your profile is set to Canada. Confirm the current price, stock, sizing, shipping and return terms on the seller site.",
     }
 
 

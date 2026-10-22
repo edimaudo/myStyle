@@ -152,10 +152,11 @@ def test_catalogue_photography_and_shopping_controls_are_present(client):
     script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
     assert 'id="buy-dialog"' in html
     assert 'data-buy-item' in script
-    assert "https://www.target.com/s?searchTerm=" in script
-    assert "https://www.google.com/search?tbm=shop&q=" in script
-    assert "https://www.uniqlo.com/ca/en/seaRch?q=" in script
-    assert "https://www.simons.ca/en/women-clothing/coats-jackets--6685" in script
+    assert "https://www.google.com/search?tbm=shop&gl=${shoppingCountry}&hl=en&q=" in script
+    assert "https://www.amazon.ca/s?k=${q}" in script
+    assert "https://www.target.com/s?searchTerm=" not in script
+    assert "https://www.uniqlo.com" not in script
+    assert "https://www.simons.ca" not in script
     assert "Photo via Pexels" in script
 
 
@@ -253,8 +254,11 @@ def test_ensemble_exposes_real_photo_buy_and_virtual_try_on_actions(client):
     assert "form.append('item_image_url', dialog.dataset.itemImage)" in script
     assert "function openBuyDialog(itemId)" in script
     assert "function retailerChoices(item)" in script
-    assert "https://www.target.com/s?searchTerm=" in script
-    assert "https://www.uniqlo.com/ca/en/seaRch?q=" in script
+    assert "https://www.google.com/search?tbm=shop&gl=${shoppingCountry}&hl=en&q=" in script
+    assert "https://www.amazon.ca/s?k=${q}" in script
+    assert "https://www.target.com/s?searchTerm=" not in script
+    assert "https://www.uniqlo.com" not in script
+    assert "https://www.simons.ca" not in script
     assert "function productSearchQuery(item)" in script
     assert "function productFocus(item)" in script
     assert "https://www.simons.ca/en/search?query=" not in script
@@ -505,6 +509,41 @@ def test_recommendations_use_search_query_to_rank_existing_items(client):
     assert ids[0] == "look-men-white-shirt-casual-pants"
 
 
+def test_recommendations_standard_path_does_not_wait_for_gemini(client, monkeypatch):
+    csrf = signed_in(client)
+    monkeypatch.setattr(main, "GEMINI_API_KEY", "configured-test-key")
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("The standard recommendation path must not wait for Gemini")
+
+    monkeypatch.setattr(main, "gemini_rank_items", fail_if_called)
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": {"country": "CA", "season": "auto", "budget": "any"}, "limit": 8})
+    assert response.status_code == 200
+    assert response.json()["source"] == "profile-ranker"
+    assert response.json()["ai_status"] == "deterministic_fast_path"
+    assert response.json()["recommendations"]
+
+
+def test_recommendations_search_filters_out_unmatched_catalogue_items(client):
+    csrf = signed_in(client)
+    profile = {"country": "CA", "season": "spring", "climate": "mild", "budget": "any", "styleTags": [], "occasions": [], "colorScheme": "earth"}
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "query": "dragon egg impossible", "limit": 8})
+    assert response.status_code == 200
+    assert response.json()["recommendations"] == []
+    assert response.json()["count"] == 0
+
+
+def test_recommendations_search_supports_common_product_synonyms(client):
+    csrf = signed_in(client)
+    profile = {"country": "CA", "season": "spring", "climate": "mild", "budget": "any", "genderPreference": "men", "styleTags": [], "occasions": [], "colorScheme": "earth"}
+    response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": profile, "query": "casual white shirt trousers", "limit": 8})
+    assert response.status_code == 200
+    items = response.json()["recommendations"]
+    assert items
+    assert items[0]["id"] == "look-men-white-shirt-casual-pants"
+    assert all(item["id"] == "look-men-white-shirt-casual-pants" or any(term in (item["name"] + " " + item["description"]).lower() for term in ("white", "shirt", "trouser", "pant", "casual")) for item in items)
+
+
 def test_recommendations_return_disclaimer_about_editorial_images_and_prices(client):
     csrf = signed_in(client)
     response = client.post("/api/recommendations", headers={"X-CSRF-Token": csrf}, json={"profile": {"budget": "any", "country": "CA", "season": "auto"}})
@@ -727,7 +766,7 @@ def test_requested_ux_cleanup_and_no_unexplained_walkthrough(client):
 
 
 
-def test_ensemble_navigation_is_icon_free_and_recommendations_lock_while_loading(client):
+def test_ensemble_navigation_is_icon_free_and_new_search_replaces_previous_request(client):
     signed_in(client)
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
@@ -758,14 +797,26 @@ def test_ensemble_navigation_is_icon_free_and_recommendations_lock_while_loading
     assert 'These are detected facial colour values. Use them as styling inspiration.' in script
     assert 'You can edit your style profile at any time.' in html
     assert 'class="side-nav-link" data-view="skin-analysis" type="button">Skin analysis</button>' in html
+    assert 'class="button button-outline skin-profile-link" data-view="discover" data-linked-tab="profile" type="button">Style profile <span aria-hidden="true">→</span></button>' in html
+    assert "Colour suggestions are approximate styling inspiration, not rules." not in script
+    assert "Your Style incorporates colour cues from your skin analysis alongside your selected palette" in script
+    assert "Ensemble also considers colour cues from your skin analysis" not in script
     assert "state.recommendationsLoading" in script
     assert "aria-busy" in script
     assert "getImageDimensions(photo)" in script
     assert "dimensions.width < 320" in script
     styles = (root / "public" / "assets" / "style.css").read_text()
+    controls = (root / "public" / "assets" / "marketing-controls.css").read_text()
     assert ".quiz-layout { max-width: none; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;" in styles
+    assert ".mystyle-auth-body .button-primary" not in styles
+    assert "--button-primary-ink: #ffffff" in controls
+    assert "--button-primary-ink: #281620" in controls
+    assert "calc(44px * var(--font-scale, 1))" in controls
     assert "skin-insight-mark" not in html and "skin-empty-mark" not in script
     assert "search-symbol" not in html
-    assert "if (state.recommendationsLoading) {" in script
-    assert "state.queuedRecommendation" in script
-    assert "Loading recommendations…" in script
+    assert "state.recommendationsLoading = true" in script
+    assert "state.recommendationController.abort()" in script
+    assert "const controller = new AbortController()" in script
+    assert "Searching the style catalogue" in script
+    assert "$('#clear-style-search')" not in script.split('const triggers = [', 1)[1].split('];', 1)[0]
+    assert "Loading recommendations…" not in script
