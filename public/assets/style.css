@@ -818,19 +818,24 @@ body, button, input, select, textarea { font-family: Inter, -apple-system, Blink
 .profile-card-heading h2 { margin-top: 0; line-height: 1.35; }
 .quiz-layout { gap: 18px; }
 .style-card-actions { flex-wrap: wrap; }
-.try-on-dialog { width: min(760px, calc(100% - 24px)); max-height: 90vh; overflow: auto; padding: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.try-on-dialog { width: min(780px, calc(100% - 24px)); max-height: min(94vh, 900px); max-height: min(94dvh, 900px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; scroll-padding-top: 12px; padding: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
 .try-on-dialog::backdrop { background: rgba(12, 16, 14, .6); }
-.try-on-dialog .dialog-header { align-items: center; }
+.try-on-dialog .dialog-header { position: sticky; top: 0; z-index: 2; align-items: center; padding: 18px 26px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .try-on-dialog .dialog-header h2 { font-size: 1.4rem; }
 .try-on-reference { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
 .try-on-reference img { width: 100px; height: 130px; object-fit: cover; border-radius: 10px; background: var(--surface-muted); }
 .try-on-reference p { margin: 0; line-height: 1.6; color: var(--ink-soft); }
 .try-on-dialog label { display: block; margin: 12px 0 7px; font-weight: 600; }
 .try-on-dialog .consent-line { display: flex; align-items: flex-start; gap: 9px; font-weight: 400; }
-#try-on-result { margin-top: 16px; }
-#try-on-result img { display: block; width: 100%; max-width: 420px; margin-top: 12px; border-radius: 12px; }
+.try-on-dialog .dialog-content { padding: 18px 26px 26px; }
+#try-on-result[hidden] { display: none !important; }
+.try-on-result { margin: 0; padding: 18px 26px 20px; border-bottom: 1px solid var(--line); background: var(--surface-muted); }
+.try-on-result h3 { margin: 0; font-size: 1rem; line-height: 1.4; }
+.try-on-result p { margin: 0; color: var(--ink-soft); line-height: 1.6; }
+.try-on-result.has-result { padding-top: 20px; padding-bottom: 20px; }
+.try-on-result .try-on-result-image { display: block; width: auto; height: auto; max-width: 100%; max-height: min(54vh, 520px); max-height: min(54dvh, 520px); object-fit: contain; margin: 14px auto 0; border-radius: 10px; background: var(--surface); }
 @media (max-width: 900px) { .mystyle-hero { grid-template-columns: 1fr; } .mystyle-hero-visual { max-width: 620px; width: 100%; margin-inline: auto; } .sidebar-walkthrough { margin-top: 10px; } }
-@media (max-width: 560px) { .mystyle-topbar { padding: 14px 16px; } .mystyle-hero { padding-top: 16px; } .mystyle-hero-visual { height: 300px; } .try-on-reference { align-items: flex-start; } }
+@media (max-width: 560px) { .mystyle-topbar { padding: 14px 16px; } .mystyle-hero { padding-top: 16px; } .mystyle-hero-visual { height: 300px; } .try-on-dialog .dialog-header { padding: 15px 17px; } .try-on-dialog .dialog-content { padding: 16px 17px 20px; } .try-on-result { padding: 14px 17px 16px; } .try-on-result .try-on-result-image { max-height: 50dvh; } .try-on-reference { align-items: flex-start; } }
 
 /* Keep the visual language editorial and restrained rather than ornamental. */
 h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero h1 { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important; }

@@ -6,7 +6,7 @@
   const PROFILE_KEY = 'my-profile';
   const SETTINGS_KEY = 'display-settings';
   const DEFAULT_PROFILE = {
-    displayName: 'myStyle Member', country: 'CA', city: 'Toronto', region: 'Ontario', genderPreference: 'all', hasCompletedQuiz: false,
+    displayName: 'James', country: 'CA', city: 'Toronto', region: 'Ontario', genderPreference: 'all', hasCompletedQuiz: false,
     season: 'auto', climate: 'variable', budget: 100, fitPreference: 'balanced',
     sizeTop: '', sizeBottom: '', sizeShoe: '', notes: '',
     styleTags: ['classic', 'casual'], occasions: ['everyday', 'work'],
@@ -91,6 +91,10 @@
     if (profileRow?.value) {
       state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
       const stored = profileRow.value;
+      if (state.profile.displayName === 'myStyle Member') {
+        state.profile.displayName = 'James';
+        await persistProfile();
+      }
       // Old local profiles may store "male" / "female" while the current controls
       // use "men" / "women". Normalize and persist so the UI and ranker agree.
       const normalizedGender = normalizeGenderPreference(state.profile.genderPreference);
@@ -257,7 +261,7 @@
     renderPaletteSelect();
     renderBudgetOptions();
     const setValue = (selector, value, fallback = '') => { const el = $(selector); if (el) el.value = value ?? fallback; };
-    setValue('#display-name', state.profile.displayName, 'myStyle Member');
+    setValue('#display-name', state.profile.displayName, 'James');
     setValue('#profile-country', state.profile.country, 'CA');
     renderRegionOptions(state.profile.region);
     setValue('#profile-gender-preference', state.profile.genderPreference, 'all');
@@ -281,9 +285,10 @@
   }
 
   function updateUserIdentity() {
-    const name = (state.profile.displayName || 'myStyle Member').trim();
+    const rawName = String(state.profile.displayName || '').trim();
+    const name = !rawName || rawName === 'myStyle Member' ? 'James' : rawName;
     const userName = $('.user-name');
-    if (userName) userName.textContent = name;
+    if (userName) userName.textContent = `Welcome! ${name}`;
   }
 
   function seasonForNow() {
@@ -735,7 +740,7 @@
     const applicationCopy = state.profile.colorScheme === 'selfie'
       ? 'Applied to Ensemble: these colour cues now guide recommendation ranking. You can choose another palette in Style profile at any time.'
       : 'These colour cues are also considered alongside your selected palette.';
-    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration—not as rules about what suits you.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}<p class="analysis-applied-note">${escapeHTML(applicationCopy)}</p></div>`;
+    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}<p class="analysis-applied-note">${escapeHTML(applicationCopy)}</p></div>`;
     const banner = $('#skin-insight-banner');
     if (banner) {
       if (!guide) {
@@ -871,6 +876,20 @@
     }
   }
 
+  function resolveAccessoryTryOnGender(item) {
+    // The provider's accessory endpoints require a binary processing parameter.
+    // Reuse the Style Profile preference first, then the catalogue item's own tag.
+    // Gender-neutral/no-preference items use a stable provider fallback so no extra
+    // gender question is introduced into the virtual try-on modal.
+    const preference = normalizeGenderPreference(state.profile.genderPreference);
+    if (preference === 'women') return 'female';
+    if (preference === 'men') return 'male';
+    const tags = Array.isArray(item?.gender_tags) ? item.gender_tags.map(tag => String(tag).toLowerCase()) : [];
+    if (tags.includes('women') && !tags.includes('men')) return 'female';
+    if (tags.includes('men') && !tags.includes('women')) return 'male';
+    return '';
+  }
+
   function openTryOn(itemId) {
     const wardrobeItem = state.wardrobeItems.find(entry => entry.id === itemId);
     const item = wardrobeItem || findItem(itemId) || state.recommendations.find(entry => entry.id === itemId) || state.accessoryRecommendations.find(entry => entry.id === itemId);
@@ -883,6 +902,11 @@
     const itemType = item.item_type || 'clothing';
     const tryOnKind = isWardrobeItem ? wardrobeTryOnKind(item) : (item.try_on_kind || 'clothing');
     if (!tryOnKind) { showAlert('Virtual try-on is not available for this item type yet.', 'error'); return; }
+    const accessoryGender = itemType === 'accessory' ? resolveAccessoryTryOnGender(item) : '';
+    if (itemType === 'accessory' && !accessoryGender) {
+      showAlert('This accessory needs a fit preference for virtual try-on. Set Women’s styles or Men’s styles in Style profile, then try again. Your recommendation preferences can remain unchanged for other items.', 'error');
+      return;
+    }
     const dialog = $('#try-on-dialog');
     if (dialog.dataset.referenceObjectUrl) URL.revokeObjectURL(dialog.dataset.referenceObjectUrl);
     const referenceUrl = isWardrobeItem ? URL.createObjectURL(item.imageBlob) : item.image_url;
@@ -892,11 +916,12 @@
     $('#try-on-item-image').alt = `${isWardrobeItem ? 'Photo of' : 'Fashion photo reference for'} ${item.name}`;
     $('#try-on-photo').value = '';
     $('#try-on-consent').checked = false;
-    $('#try-on-result').replaceChildren();
+    const resultPanel = $('#try-on-result');
+    resultPanel.replaceChildren();
+    resultPanel.hidden = true;
+    resultPanel.classList.remove('has-result');
     const photoLabel = $('#try-on-photo-label');
     const guidance = $('#try-on-reference-guidance');
-    const genderField = $('#try-on-gender-field');
-    const fitGender = state.profile.genderPreference === 'women' ? 'female' : state.profile.genderPreference === 'men' ? 'male' : '';
     const guidanceByKind = {
       clothing: ['Use a clear front-facing photo showing the body area this clothing covers.', 'A full-body photo gives more context for outfit try-on. Keep the garment reference visible and upright.'],
       bag: ['Use a front-facing upper-body or full-length photo with your torso visible.', 'The reference should show the bag clearly without obstruction.'],
@@ -907,13 +932,11 @@
     const guidancePair = guidanceByKind[tryOnKind] || guidanceByKind.clothing;
     if (photoLabel) photoLabel.innerHTML = `${escapeHTML(guidancePair[0])} <span class="required-marker">*</span>`;
     if (guidance) guidance.textContent = guidancePair[1];
-    if (genderField) genderField.hidden = itemType !== 'accessory';
-    const genderSelect = $('#try-on-gender');
-    if (genderSelect) genderSelect.value = fitGender;
     dialog.dataset.itemImage = isWardrobeItem ? '' : item.image_url;
     dialog.dataset.itemName = item.name;
     dialog.dataset.itemType = itemType;
     dialog.dataset.tryOnKind = tryOnKind;
+    dialog.dataset.tryOnGender = accessoryGender;
     dialog.dataset.itemSource = isWardrobeItem ? 'wardrobe' : 'catalog';
     dialog.dataset.wardrobeItemId = isWardrobeItem ? item.id : '';
     renderStoredPhoto('tryOn');
@@ -948,12 +971,14 @@
     if (selectedPhoto) { try { await rememberPhoto('tryOn', selectedPhoto); } catch (error) { showAlert(error.message, 'error'); return; } }
     const itemType = dialog.dataset.itemType || 'clothing';
     const accessoryKind = dialog.dataset.tryOnKind || '';
-    const gender = $('#try-on-gender')?.value || '';
-    if (itemType === 'accessory' && !gender) { showAlert('Choose a gender option for this accessory try-on. You can use a different choice from your style profile.', 'error'); return; }
+    const gender = itemType === 'accessory' ? (dialog.dataset.tryOnGender || '') : '';
     const button = $('#run-try-on');
     const resultPanel = $('#try-on-result');
     button.disabled = true; button.textContent = 'Preparing try-on…';
+    resultPanel.hidden = false;
+    resultPanel.classList.remove('has-result');
     resultPanel.textContent = 'Uploading your photo and reference image…';
+    dialog.scrollTo({ top: 0, behavior: 'smooth' });
     try {
       const form = new FormData();
       form.append('photo', photo, photo.name || 'mystyle-try-on.jpg');
@@ -976,17 +1001,27 @@
       const completed = await pollTryOnTask(task.task_id, task.provider_task_kind || 'cloth-v4');
       if (completed.status === 'error') throw new Error(completed.message || 'YouCam could not complete this try-on.');
       resultPanel.replaceChildren();
-      const message = document.createElement('p');
-      message.textContent = 'Your virtual try-on is ready.';
+      resultPanel.classList.add('has-result');
+      const message = document.createElement('h3');
+      message.textContent = 'Your virtual try-on is ready';
       resultPanel.append(message);
       if (completed.image_url) {
-        const image = document.createElement('img'); image.src = completed.image_url; image.alt = `Virtual try-on result for ${dialog.dataset.itemName || 'selected style'}`;
+        const image = document.createElement('img');
+        image.className = 'try-on-result-image';
+        image.alt = `Virtual try-on result for ${dialog.dataset.itemName || 'selected style'}`;
+        image.addEventListener('load', () => dialog.scrollTo({ top: 0, behavior: 'smooth' }), { once: true });
+        image.src = completed.image_url;
         resultPanel.append(image);
+        if (image.complete && image.naturalWidth > 0) dialog.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
         const note = document.createElement('p'); note.textContent = 'YouCam completed the task but did not return a displayable result image.'; resultPanel.append(note);
       }
+      dialog.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
+      resultPanel.hidden = false;
+      resultPanel.classList.remove('has-result');
       resultPanel.textContent = error.message || 'Could not complete the virtual try-on.';
+      dialog.scrollTo({ top: 0, behavior: 'smooth' });
       showAlert(resultPanel.textContent, 'error');
     } finally { button.disabled = false; button.textContent = 'Generate try-on'; }
   }
@@ -1115,7 +1150,7 @@
   async function saveProfile(event) {
     event?.preventDefault?.();
     try {
-      state.profile.displayName = $('#display-name')?.value.trim() || 'myStyle Member';
+      state.profile.displayName = $('#display-name')?.value.trim() || 'James';
       state.profile.country = $('#profile-country')?.value || 'CA';
       renderRegionOptions($('#profile-region')?.value || state.profile.region);
       state.profile.genderPreference = normalizeGenderPreference($('#profile-gender-preference')?.value || state.profile.genderPreference || 'all');

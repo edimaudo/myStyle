@@ -494,7 +494,7 @@ async def signin(request: Request, email: str = Form(...), password: str = Form(
     if not secrets.compare_digest(email.strip().lower(), demo_email) or not secrets.compare_digest(password, demo_password):
         return RedirectResponse("/signin?error=invalid", status_code=303)
     request.session.clear()
-    request.session["demo_user"] = {"email": demo_email, "name": "myStyle Member"}
+    request.session["demo_user"] = {"email": demo_email, "name": "James"}
     request.session["csrf_token"] = secrets.token_urlsafe(32)
     return RedirectResponse("/app", status_code=303)
 

@@ -605,6 +605,32 @@ def test_app_ui_discloses_not_live_product_data(client):
     assert "personal edit" not in html
 
 
+def test_virtual_try_on_reuses_style_profile_gender_and_shows_result_near_modal_top(client):
+    signed_in(client)
+    root = Path(__file__).resolve().parents[1]
+    html = client.get("/app").text
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    css = (root / "public" / "assets" / "style.css").read_text(encoding="utf-8")
+
+    # There is no redundant gender selector in the try-on dialog; profile/item data resolves it.
+    dialog = html.split('<dialog id="try-on-dialog"', 1)[1].split('</dialog>', 1)[0]
+    assert 'id="try-on-gender"' not in dialog
+    assert 'id="try-on-gender-field"' not in dialog
+    assert "function resolveAccessoryTryOnGender(item)" in script
+    assert "normalizeGenderPreference(state.profile.genderPreference)" in script
+    assert "const accessoryGender = itemType === 'accessory' ? resolveAccessoryTryOnGender(item) : '';" in script
+    assert "$('#try-on-gender')" not in script
+    assert "form.append('gender', gender)" in script
+    assert "then try again. Your recommendation preferences can remain unchanged" in script
+
+    # Result area is placed before the long form so it remains prominent after generation.
+    assert dialog.index('id="try-on-result"') < dialog.index('class="dialog-content"')
+    assert "scrollTo({ top: 0, behavior: 'smooth' })" in script
+    assert "position: sticky" in css[css.index(".try-on-dialog .dialog-header"):css.index(".try-on-reference")]
+    assert "max-height: min(54dvh, 520px)" in css
+    assert "#try-on-result[hidden] { display: none !important; }" in css
+
+
 def test_skin_analysis_and_try_on_task_endpoints_are_wired(client):
     signed_in(client)
     from pathlib import Path
@@ -669,13 +695,29 @@ def test_ensemble_navigation_is_icon_free_and_recommendations_lock_while_loading
     html = client.get("/app").text
     script = (root / "public" / "assets" / "app.js").read_text()
     assert "<title>myStyle — Personal styling</title>" in html
-    assert 'name="description" content="myStyle helps you discover clothing recommendations in Ensemble' in html
+    assert 'name="description" content="myStyle helps you discover clothing recommendations matched to your style' in html
     assert '<h1 class="topbar-title">myStyle</h1>' in html
-    assert '<h1>Ensemble</h1>' in html
+    assert '<h1>Your Style</h1>' in html
+    assert '<h1>Your style profile</h1>' in html
+    assert '<h1>Your style profile.</h1>' not in html
     assert 'id="edit-summary"' not in html
     assert 'id="recommendation-source"' not in html
     assert 'class="user-avatar"' not in html
-    assert 'class="side-nav-link is-active" data-view="discover" type="button">Style &amp; Ensemble</button>' in html
+    assert 'class="side-nav-link is-active" data-view="discover" type="button">Ensemble Style</button>' in html
+    assert '<strong class="user-name">Welcome! James</strong>' in html
+    assert 'Where and when you dress' not in html
+    assert 'Season recommendations are based on the current North American season' not in html
+    profile_fields = [html.index('id="profile-country"'), html.index('id="profile-region"'), html.index('id="profile-city"')]
+    assert profile_fields == sorted(profile_fields)
+    assert html.index('id="profile-season"') < html.index('id="profile-climate"')
+    assert 'Build a profile around your colours' not in client.get('/signin').text
+    signin = client.get('/signin').text
+    assert 'Back to home' not in signin
+    assert 'Sign in to open your styling profile and saved pieces in this browser.' not in signin
+    assert 'Your selfie is sent to YouCam only after you give consent and start analysis.' not in html
+    assert 'Use these as styling inspiration—not as rules about what suits you.' not in script
+    assert 'These are detected facial colour values. Use them as styling inspiration.' in script
+    assert 'You can edit your style profile at any time.' in html
     assert 'class="side-nav-link" data-view="skin-analysis" type="button">Skin analysis</button>' in html
     assert "state.recommendationsLoading" in script
     assert "aria-busy" in script
