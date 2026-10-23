@@ -133,12 +133,31 @@
   }
   async function saveSettings() { await dbRequest('settings', 'put', { key: SETTINGS_KEY, value: state.settings }); }
 
+  function supportedPhotoMimeType(file) {
+    if (!file) return '';
+    const declaredType = String(file.type || '').toLowerCase().split(';')[0].trim();
+    const extension = String(file.name || '').toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || '';
+    const extensionType = ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' })[extension] || '';
+    const declaredSupported = ({ 'image/jpeg': 'image/jpeg', 'image/jpg': 'image/jpeg', 'image/pjpeg': 'image/jpeg', 'image/png': 'image/png' })[declaredType] || '';
+    if (declaredType && declaredType !== 'application/octet-stream' && !declaredSupported) return '';
+    if (declaredSupported && extensionType && declaredSupported !== extensionType) return '';
+    return declaredSupported || extensionType;
+  }
+
+  function normalizedPhotoBlob(file) {
+    const mimeType = supportedPhotoMimeType(file);
+    if (!mimeType) throw new Error('Choose a JPG, JPEG or PNG image.');
+    return file.slice(0, file.size, mimeType);
+  }
+
   async function rememberPhoto(key, file) {
-    if (!file || !['image/jpeg', 'image/png'].includes(file.type)) throw new Error('Choose a JPG or PNG image.');
+    const mimeType = supportedPhotoMimeType(file);
+    if (!mimeType) throw new Error('Choose a JPG, JPEG or PNG image.');
     if (!file.size || file.size > 9_500_000) throw new Error('Choose an image smaller than 9.5 MB.');
-    const blob = file.slice(0, file.size, file.type);
-    await dbRequest('images', 'put', { key, blob, name: file.name || `${key}.jpg`, type: file.type, lastModified: file.lastModified || Date.now(), updatedAt: new Date().toISOString() });
-    state.cachedImages[key] = file;
+    const blob = file.slice(0, file.size, mimeType);
+    const name = file.name || `${key}.${mimeType === 'image/png' ? 'png' : 'jpg'}`;
+    await dbRequest('images', 'put', { key, blob, name, type: mimeType, lastModified: file.lastModified || Date.now(), updatedAt: new Date().toISOString() });
+    state.cachedImages[key] = new File([blob], name, { type: mimeType, lastModified: file.lastModified || Date.now() });
     renderStoredPhoto(key);
   }
 
@@ -444,9 +463,23 @@
     const canTry = Boolean(item.try_on_supported && item.image_kind === 'photo' && tryOnTypeSupported);
     const actions = `<button class="button button-primary" data-buy-item="${escapeHTML(item.id)}" type="button">Buy / find similar</button>${canTry ? `<button class="button button-outline" data-try-on="${escapeHTML(item.id)}" type="button">Virtual try-on</button>` : ''}${savedView ? '' : `<button class="button button-outline" data-not-for-me="${escapeHTML(item.id)}" type="button">Not for me</button>`}`;
     return `<article class="style-card" data-item-card="${escapeHTML(item.id)}">
-      <div class="style-card-media" data-image-state="loading"><img data-style-image src="${escapeHTML(item.image_url)}" alt="Fashion photograph showing ${escapeHTML(item.name)}; listed colours: ${(item.colors || []).slice(0, 3).map(escapeHTML).join(', ')}" loading="lazy" decoding="async"><div class="style-image-fallback"><span>Photo unavailable</span><strong>${escapeHTML(item.name)}</strong></div><span class="style-card-season">${escapeHTML(seasonBadge)}</span><button class="save-style-button" data-save-item="${escapeHTML(item.id)}" type="button" aria-pressed="${String(saved)}" aria-label="${saved ? 'Remove from' : 'Save to'} my saved pieces">${saved ? '♥' : '♡'}</button></div>
+      <div class="style-card-media" data-image-state="loading"><img data-style-image src="${escapeHTML(item.image_url)}" alt="Fashion photograph showing ${escapeHTML(item.name)}; listed colours: ${(item.colors || []).slice(0, 3).map(escapeHTML).join(', ')}" loading="lazy" decoding="async"><span class="style-card-season">${escapeHTML(seasonBadge)}</span><button class="save-style-button" data-save-item="${escapeHTML(item.id)}" type="button" aria-pressed="${String(saved)}" aria-label="${saved ? 'Remove from' : 'Save to'} my saved pieces">${saved ? '♥' : '♡'}</button></div>
       <div class="style-card-content"><div class="style-card-kicker"><span>${escapeHTML(item.category)}</span><span class="budget-target">Budget guide ${escapeHTML(money(targetPrice, item.currency || CURRENCY()))}</span></div><h3>${escapeHTML(item.name)}</h3><p class="style-card-description">${escapeHTML(item.description)}</p><p class="style-match-reason">${escapeHTML(item.recommendation_reason || 'A style reference to consider for your wardrobe.')}</p><div class="style-card-swatches" aria-label="Colour ideas">${swatches}<span>${escapeHTML((item.colors || []).slice(0, 3).join(' · '))}</span></div><div class="style-card-tags">${tags}</div>${photoCredit}<div class="style-card-actions">${actions}</div></div>
     </article>`;
+  }
+
+  function stylePhotoRetryUrls(source) {
+    try {
+      const original = new URL(source, window.location.href);
+      if (original.hostname !== 'images.pexels.com') return [];
+      return [960, 640, 1440].map(width => {
+        const candidate = new URL(original.href);
+        candidate.searchParams.set('w', String(width));
+        return candidate.href;
+      }).filter((url, index, list) => url !== original.href && list.indexOf(url) === index);
+    } catch (_) {
+      return [];
+    }
   }
 
   function bindStyleImages(root = document) {
@@ -455,9 +488,32 @@
       img.dataset.bound = '1';
       const parent = img.closest('.style-card-media');
       const setState = stateName => parent?.setAttribute('data-image-state', stateName);
-      img.addEventListener('load', () => setState('loaded'), { once: true });
-      img.addEventListener('error', () => setState('error'), { once: true });
-      if (img.complete) setState(img.naturalWidth ? 'loaded' : 'error');
+      const candidates = [img.currentSrc || img.src, ...stylePhotoRetryUrls(img.src)];
+      let candidateIndex = 0;
+      img.addEventListener('load', () => setState('loaded'));
+      img.addEventListener('error', () => {
+        candidateIndex += 1;
+        if (candidateIndex < candidates.length) {
+          setState('loading');
+          img.src = candidates[candidateIndex];
+          return;
+        }
+        // Never leave a recommendation card on screen with a missing-photo tile.
+        const card = img.closest('.style-card');
+        card?.remove();
+        const grid = root.matches?.('#recommendation-grid') ? root : root.closest?.('#recommendation-grid');
+        if (grid && !grid.querySelector('.style-card') && !grid.querySelector('.photo-retry-state')) {
+          grid.innerHTML = '<div class="no-results photo-retry-state"><strong>Fashion photos could not be loaded.</strong><p>Check your connection and refresh recommendations to try again.</p><button class="button button-primary" type="button" id="retry-edit">Refresh recommendations</button></div>';
+        }
+      });
+      if (img.complete) {
+        if (img.naturalWidth) setState('loaded');
+        else {
+          candidateIndex = 1;
+          if (candidateIndex < candidates.length) img.src = candidates[candidateIndex];
+          else img.dispatchEvent(new Event('error'));
+        }
+      }
     });
   }
 
@@ -700,7 +756,8 @@
     const form = $('#wardrobe-form');
     const file = $('#wardrobe-photo')?.files?.[0];
     if (!file) { showAlert('Choose a photo of the clothing or accessory you want to add.', 'error'); return; }
-    if (!['image/jpeg', 'image/png'].includes(file.type)) { showAlert('Use a JPG or PNG photo.', 'error'); return; }
+    const photoMimeType = supportedPhotoMimeType(file);
+    if (!photoMimeType) { showAlert('Use a JPG, JPEG or PNG photo.', 'error'); return; }
     if (!file.size || file.size > 9_500_000) { showAlert('Choose a photo smaller than 9.5 MB.', 'error'); return; }
     const submit = $('#wardrobe-add-button');
     if (submit?.disabled) return;
@@ -718,7 +775,7 @@
         id, name, item_type: itemType, category, colors,
         season: $('#wardrobe-season')?.value || 'all',
         notes: $('#wardrobe-notes')?.value.trim().slice(0, 400) || '',
-        imageBlob: file.slice(0, file.size, file.type), imageType: file.type,
+        imageBlob: file.slice(0, file.size, photoMimeType), imageType: photoMimeType,
         imageName: file.name || `${id}.jpg`, createdAt: new Date().toISOString(),
       };
       await dbRequest('wardrobe', 'put', item);
@@ -854,7 +911,7 @@
       };
       image.onerror = () => {
         URL.revokeObjectURL(objectUrl);
-        reject(new Error('This image could not be read. Choose a valid JPG or PNG file.'));
+        reject(new Error('This image could not be read. Choose a valid JPG, JPEG or PNG file.'));
       };
       image.src = objectUrl;
     });
@@ -883,10 +940,11 @@
   async function runSkinAnalysis() {
     const selectedPhoto = $('#skin-photo')?.files?.[0];
     const photo = selectedPhoto || state.cachedImages.skinAnalysis;
-    if (!photo) { showAlert('Choose a front-facing JPG or PNG selfie first.', 'error'); return; }
+    if (!photo) { showAlert('Choose a front-facing JPG, JPEG or PNG selfie first.', 'error'); return; }
     if (!$('#skin-consent')?.checked) { showAlert('Consent is required before sending the selfie to YouCam.', 'error'); return; }
     if (!state.config.youcam_configured) { showAlert('YouCam skin analysis is not configured on this deployment. Add YCE_API_KEY in environment variables. Your selfie has not been uploaded.', 'error'); return; }
-    if (!['image/jpeg', 'image/png'].includes(photo.type)) { showAlert('Use a JPG or PNG selfie.', 'error'); return; }
+    const photoMimeType = supportedPhotoMimeType(photo);
+    if (!photoMimeType) { showAlert('Use a JPG, JPEG or PNG selfie.', 'error'); return; }
     if (!photo.size || photo.size > 9_500_000) { showAlert('Choose a non-empty image smaller than 9.5 MB.', 'error'); return; }
     let dimensions;
     try { dimensions = await getImageDimensions(photo); }
@@ -905,7 +963,7 @@
     button.textContent = 'Starting analysis…';
     try {
       const form = new FormData();
-      form.append('photo', photo);
+      form.append('photo', normalizedPhotoBlob(photo), photo.name || `mystyle-selfie.${photoMimeType === 'image/png' ? 'png' : 'jpg'}`);
       form.append('consent', 'true');
       const task = await apiFetch('/api/color-analysis', { method: 'POST', body: form });
       button.textContent = 'Analyzing colour tones…';
@@ -1014,10 +1072,11 @@
     const dialog = $('#try-on-dialog');
     const selectedPhoto = $('#try-on-photo')?.files?.[0];
     const photo = selectedPhoto || state.cachedImages.tryOn;
-    if (!photo) { showAlert('Choose a JPG or PNG photo first. Your last try-on photo will be reused automatically after the first upload.', 'error'); return; }
+    if (!photo) { showAlert('Choose a JPG, JPEG or PNG photo first. Your last try-on photo will be reused automatically after the first upload.', 'error'); return; }
     if (!$('#try-on-consent')?.checked) { showAlert('Consent is required before sending photos to YouCam.', 'error'); return; }
     if (!state.config.youcam_configured) { showAlert('Virtual try-on is not configured on this deployment. Add YCE_API_KEY to enable it.', 'error'); return; }
-    if (!['image/jpeg', 'image/png'].includes(photo.type) || !photo.size || photo.size > 9_500_000) { showAlert('Choose a JPG or PNG image smaller than 9.5 MB.', 'error'); return; }
+    const photoMimeType = supportedPhotoMimeType(photo);
+    if (!photoMimeType || !photo.size || photo.size > 9_500_000) { showAlert('Choose a JPG, JPEG or PNG image smaller than 9.5 MB.', 'error'); return; }
     let dimensions;
     try { dimensions = await getImageDimensions(photo); }
     catch (error) { showAlert(error.message, 'error'); return; }
@@ -1037,7 +1096,7 @@
     dialog.scrollTo({ top: 0, behavior: 'smooth' });
     try {
       const form = new FormData();
-      form.append('photo', photo, photo.name || 'mystyle-try-on.jpg');
+      form.append('photo', normalizedPhotoBlob(photo), photo.name || `mystyle-try-on.${photoMimeType === 'image/png' ? 'png' : 'jpg'}`);
       if (dialog.dataset.itemSource === 'wardrobe') {
         const wardrobeReference = state.wardrobeItems.find(entry => entry.id === dialog.dataset.wardrobeItemId);
         if (!wardrobeReference?.imageBlob) throw new Error('That wardrobe photo is no longer available. Open My wardrobe and choose the item again.');

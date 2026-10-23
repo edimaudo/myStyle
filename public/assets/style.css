@@ -642,11 +642,6 @@ body.mystyle-body, body.mystyle-landing, body.mystyle-auth-body { font-family: '
 .style-card-media img { display: block; width: 100%; height: 100%; object-fit: cover; transition: opacity .2s ease; }
 .style-card-media[data-image-state="loading"] img { opacity: .6; }
 .style-card-media[data-image-state="loaded"] img { opacity: 1; }
-.style-card-media[data-image-state="error"] img { display: none; }
-.style-image-fallback { position: absolute; inset: 0; display: none; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 7px; padding: 20px; color: #28352b; background: radial-gradient(circle at 82% 12%, #faf6eb, transparent 39%), linear-gradient(143deg, #ded5c2, #bfcbbd 57%, #e8d8cb); }
-.style-image-fallback span { font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
-.style-image-fallback strong { max-width: 92%; font-family: 'Playfair Display', Georgia, serif; font-size: 1.35rem; line-height: 1.12; }
-.style-card-media[data-image-state="error"] .style-image-fallback { display: flex; }
 .style-card-season { position: absolute; left: 11px; bottom: 11px; max-width: calc(100% - 64px); border-radius: 5px; padding: 6px 8px; background: rgba(255,253,248,.94); color: #324b39; font-size: .66rem; font-weight: 800; }
 .save-style-button { position: absolute; right: 10px; top: 10px; width: 36px; height: 36px; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background: rgba(255,253,248,.95); color: #324b39; font-size: 1.28rem; line-height: 1; }
 .save-style-button[aria-pressed="true"] { color: #9d4450; }
@@ -897,7 +892,6 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
   border-radius: 6px;
 }
 .style-card:hover { transform: none; box-shadow: none !important; }
-.style-image-fallback { background: #e8e4da; }
 .choice-chip span { border-radius: 5px; }
 .season-weather-pill { border-radius: 5px; }
 .style-tags span { border-radius: 5px; }

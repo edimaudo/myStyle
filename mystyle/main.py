@@ -79,6 +79,34 @@ def normalize_yce_content_type(content_type: str) -> str:
     return "image/png" if content_type == "image/png" else "image/jpg"
 
 
+IMAGE_EXTENSION_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+IMAGE_MIME_TYPES = {
+    "image/jpeg": "image/jpeg",
+    "image/jpg": "image/jpeg",
+    "image/pjpeg": "image/jpeg",
+    "image/png": "image/png",
+}
+
+
+def resolve_photo_content_type(filename: str | None, content_type: str | None, *, label: str = "photo") -> str:
+    """Accept JPEG/JPG/PNG by declared MIME type or recognized filename extension."""
+    declared = (content_type or "").split(";", 1)[0].strip().lower()
+    extension = Path(filename or "").suffix.lower()
+    extension_type = IMAGE_EXTENSION_TYPES.get(extension, "")
+    declared_type = IMAGE_MIME_TYPES.get(declared, "")
+
+    if extension and not extension_type:
+        raise HTTPException(status_code=415, detail=f"Use a JPG, JPEG or PNG {label}.")
+    if declared and declared not in IMAGE_MIME_TYPES and declared != "application/octet-stream":
+        raise HTTPException(status_code=415, detail=f"Use a JPG, JPEG or PNG {label}.")
+    if declared_type and extension_type and declared_type != extension_type:
+        raise HTTPException(status_code=415, detail=f"The {label} extension does not match its image type. Choose a JPG, JPEG or PNG file.")
+    resolved = declared_type or extension_type
+    if not resolved:
+        raise HTTPException(status_code=415, detail=f"Use a JPG, JPEG or PNG {label}.")
+    return resolved
+
+
 def yce_headers() -> dict[str, str]:
     if not YCE_API_KEY:
         raise HTTPException(status_code=503, detail="YouCam is not configured. Add YCE_API_KEY to enable this feature.")
@@ -87,9 +115,10 @@ def yce_headers() -> dict[str, str]:
 
 async def upload_image_to_yce(image_bytes: bytes, filename: str, content_type: str) -> str:
     if not image_bytes or len(image_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Choose a selfie smaller than 9.5 MB.")
-    if content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=415, detail="Use a JPG or PNG selfie.")
+        raise HTTPException(status_code=413, detail="Choose a photo smaller than 9.5 MB.")
+    content_type = IMAGE_MIME_TYPES.get((content_type or "").lower(), "")
+    if content_type not in {"image/jpeg", "image/png"}:
+        raise HTTPException(status_code=415, detail="Use a JPG, JPEG or PNG photo.")
     provider_content_type = normalize_yce_content_type(content_type)
     clean_name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(filename or "selfie.jpg").name)[:100]
     if not clean_name.lower().endswith((".jpg", ".jpeg", ".png")):
@@ -665,12 +694,10 @@ async def color_analysis(request: Request, photo: UploadFile = File(...), consen
     require_session(request)
     if not consent:
         raise HTTPException(status_code=400, detail="Consent is required before sending your selfie to YouCam.")
-    content_type = (photo.content_type or "").lower()
-    if content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=415, detail="Use a JPG or PNG selfie.")
     photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
     if not photo_bytes or len(photo_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Choose a non-empty selfie smaller than 9.5 MB.")
+    content_type = resolve_photo_content_type(photo.filename, photo.content_type, label="selfie")
     file_id = await upload_image_to_yce(photo_bytes, photo.filename or "mystyle-skin-analysis.jpg", content_type)
     payload = await create_yce_color_task(file_id)
     try:
@@ -695,12 +722,10 @@ async def try_on(
     require_session(request)
     if not consent:
         raise HTTPException(status_code=400, detail="Consent is required before sending photos to YouCam.")
-    content_type = (photo.content_type or "").lower()
-    if content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=415, detail="Use a JPG or PNG photo.")
     photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
     if not photo_bytes or len(photo_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Choose a photo smaller than 9.5 MB.")
+    content_type = resolve_photo_content_type(photo.filename, photo.content_type, label="photo")
 
     provider_task_kind = "cloth-v4"
     if item_type == "accessory":
@@ -716,12 +741,10 @@ async def try_on(
     if item_image is not None:
         # Personal wardrobe photos are supplied directly by the browser and are never
         # persisted by this endpoint. They are sent to YouCam only after user consent.
-        style_type = (item_image.content_type or "").lower()
-        if style_type not in ALLOWED_IMAGE_TYPES:
-            raise HTTPException(status_code=415, detail="Use a JPG or PNG photo for the wardrobe item.")
         style_bytes = await item_image.read(MAX_UPLOAD_BYTES + 1)
         if not style_bytes or len(style_bytes) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="Choose a wardrobe photo smaller than 9.5 MB.")
+        style_type = resolve_photo_content_type(item_image.filename, item_image.content_type, label="wardrobe-item photo")
     else:
         parsed = urlparse(item_image_url)
         if parsed.scheme != "https" or parsed.hostname not in {"images.unsplash.com", "images.pexels.com"}:
@@ -731,9 +754,10 @@ async def try_on(
             if image_response.is_error:
                 raise HTTPException(status_code=502, detail="Could not load the selected style image. Choose another style.")
             style_bytes = image_response.content
-            style_type = image_response.headers.get("content-type", "image/jpeg").split(";")[0].lower()
-        if style_type not in ALLOWED_IMAGE_TYPES or not style_bytes or len(style_bytes) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=415, detail="The selected style image is not a supported JPG or PNG under 9.5 MB.")
+            declared_style_type = image_response.headers.get("content-type", "image/jpeg").split(";")[0].lower()
+            style_type = resolve_photo_content_type(Path(parsed.path).name, declared_style_type, label="style reference image")
+        if not style_bytes or len(style_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=415, detail="The selected style image must be a JPG, JPEG or PNG under 9.5 MB.")
 
     person_id = await upload_image_to_yce(photo_bytes, photo.filename or "mystyle-person.jpg", content_type)
     style_id = await upload_image_to_yce(style_bytes, "mystyle-style-reference.jpg", style_type)

@@ -843,3 +843,62 @@ def test_ensemble_navigation_is_icon_free_and_new_search_replaces_previous_reque
     assert "Searching the style catalogue" in script
     assert "$('#clear-style-search')" not in script.split('const triggers = [', 1)[1].split('];', 1)[0]
     assert "Loading recommendations…" not in script
+
+
+def test_photo_upload_accepts_jpg_jpeg_and_png_across_every_photo_input(client):
+    signed_in(client)
+    html = client.get("/app").text
+    expected_accept = 'accept=".jpg,.jpeg,.png,image/jpeg,image/jpg,image/png"'
+    for input_id in ("skin-photo", "wardrobe-photo", "try-on-photo"):
+        input_markup = html.split(f'id="{input_id}"', 1)[1].split(">", 1)[0]
+        assert expected_accept in input_markup
+
+    source = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "function supportedPhotoMimeType(file)" in source
+    assert "jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png'" in source
+    assert "normalizedPhotoBlob(photo)" in source
+    assert "Use a JPG, JPEG or PNG photo." in source
+
+
+def test_photo_mime_resolution_accepts_mime_and_extension_variants():
+    from fastapi import HTTPException
+    from mystyle.main import resolve_photo_content_type
+
+    assert resolve_photo_content_type("top.jpg", "image/jpeg") == "image/jpeg"
+    assert resolve_photo_content_type("top.jpeg", "image/jpg") == "image/jpeg"
+    assert resolve_photo_content_type("top.png", "image/png") == "image/png"
+    assert resolve_photo_content_type("top.JPEG", "application/octet-stream") == "image/jpeg"
+    assert resolve_photo_content_type("top.JPG", "") == "image/jpeg"
+    with pytest.raises(HTTPException) as exc_info:
+        resolve_photo_content_type("top.gif", "image/gif")
+    assert exc_info.value.status_code == 415
+    with pytest.raises(HTTPException) as exc_info:
+        resolve_photo_content_type("top.png", "image/jpeg")
+    assert exc_info.value.status_code == 415
+
+
+def test_broken_fashion_images_retry_then_remove_card_instead_of_photo_unavailable_tile():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    controls = (root / "public" / "assets" / "marketing-controls.css").read_text(encoding="utf-8")
+    assert "Photo unavailable" not in source
+    assert "function stylePhotoRetryUrls(source)" in source
+    assert "candidate.searchParams.set('w', String(width))" in source
+    assert "card?.remove()" in source
+    assert "Fashion photos could not be loaded." in source
+    assert 'id="retry-edit"' in source
+    assert "style-image-fallback" not in source
+    assert 'style-card-media[data-image-state="error"] .style-image-fallback' not in controls
+
+
+def test_button_design_uses_shared_theme_and_font_scale_tokens():
+    root = Path(__file__).resolve().parents[1]
+    controls = (root / "public" / "assets" / "marketing-controls.css").read_text(encoding="utf-8")
+    assert "--button-radius: 6px" in controls
+    assert ".button-primary:visited" in controls
+    assert ".button-outline:visited" in controls
+    assert "calc(40px * var(--font-scale, 1))" in controls
+    assert '.font-control button[aria-pressed="true"]' in controls
+    assert ".wardrobe-filter.is-active" in controls
+    for selector in (".theme-toggle,", ".icon-control,", ".dialog-close,", ".wardrobe-filter,", ".save-style-button"):
+        assert selector in controls
