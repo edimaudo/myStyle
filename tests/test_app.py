@@ -891,6 +891,23 @@ def test_broken_fashion_images_retry_then_remove_card_instead_of_photo_unavailab
     assert 'style-card-media[data-image-state="error"] .style-image-fallback' not in controls
 
 
+def test_all_button_families_share_authoritative_theme_aware_tokens():
+    root = Path(__file__).resolve().parents[1]
+    controls = (root / "public" / "assets" / "marketing-controls.css").read_text(encoding="utf-8")
+    templates = list((root / "mystyle" / "templates").glob("*.html"))
+    assert "--action-primary-bg: var(--blue)" in controls
+    assert "--action-secondary-bg: var(--surface)" in controls
+    assert "--action-secondary-border: var(--line)" in controls
+    assert ".button-primary:hover," in controls
+    assert ".button-outline:hover," in controls
+    assert ".style-card-actions .button," in controls
+    assert ".wardrobe-card-actions .button," in controls
+    assert ".wardrobe-match-actions .button" in controls
+    assert "--action-control-height: max(40px, calc(44px * var(--font-scale, 1)))" in controls
+    assert 'input[type="file"]::file-selector-button' in controls
+    assert all("marketing-controls.css?v=20261023-button-system" in template.read_text(encoding="utf-8") for template in templates)
+
+
 def test_button_design_uses_shared_theme_and_font_scale_tokens():
     root = Path(__file__).resolve().parents[1]
     controls = (root / "public" / "assets" / "marketing-controls.css").read_text(encoding="utf-8")

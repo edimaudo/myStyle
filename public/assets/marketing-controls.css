@@ -325,3 +325,233 @@ html[data-theme="dark"] .save-style-button[aria-pressed="true"] { color: #ff9fab
 .wardrobe-card-actions .button,
 .wardrobe-match-actions .button,
 .style-card-actions .button { box-shadow: none; }
+
+/* Final, authoritative action-control system.
+   Primary actions are always accent-filled; secondary actions use the current
+   theme surface and border; quiet actions remain text-only. Component-specific
+   layout rules may change width, but not the colour, border, or type treatment. */
+:root {
+  --action-primary-bg: var(--blue);
+  --action-primary-hover-bg: var(--blue-hover);
+  --action-primary-fg: var(--button-primary-ink, #ffffff);
+  --action-secondary-bg: var(--surface);
+  --action-secondary-fg: var(--ink);
+  --action-secondary-border: var(--line);
+  --action-hover-bg: var(--surface-muted);
+  --action-radius: 6px;
+  --action-control-height: max(40px, calc(44px * var(--font-scale, 1)));
+}
+html[data-theme="dark"] {
+  --action-primary-fg: #281620;
+}
+.button,
+.button:visited {
+  appearance: none;
+  min-height: var(--action-control-height);
+  padding: max(8px, calc(10px * var(--font-scale, 1))) max(12px, calc(14px * var(--font-scale, 1)));
+  border: 1px solid transparent;
+  border-radius: var(--action-radius);
+  box-shadow: none;
+  font-family: inherit;
+  font-size: .9rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-decoration: none;
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease;
+}
+.button:hover { transform: none; }
+.button-primary,
+.button-primary:visited {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg);
+  border-color: var(--action-primary-bg);
+}
+.button-primary:hover,
+.button-primary:focus-visible {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-hover-bg);
+  border-color: var(--action-primary-hover-bg);
+}
+.button-outline,
+.button-outline:visited {
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+  border-color: var(--action-secondary-border);
+}
+.button-outline:hover,
+.button-outline:focus-visible {
+  color: var(--action-secondary-fg);
+  background: var(--action-hover-bg);
+  border-color: var(--action-primary-bg);
+}
+.button:focus-visible,
+.theme-toggle:focus-visible,
+.icon-control:focus-visible,
+.dialog-close:focus-visible,
+.wardrobe-filter:focus-visible,
+.save-style-button:focus-visible,
+.font-control button:focus-visible,
+.ensemble-tab:focus-visible,
+.side-nav-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.button:disabled,
+.button[aria-disabled="true"],
+.theme-toggle:disabled,
+.wardrobe-filter:disabled {
+  opacity: .58;
+  cursor: not-allowed;
+}
+
+/* All compact card actions share one size scale and the same primary/secondary variants. */
+.style-card-actions .button,
+.wardrobe-card-actions .button,
+.wardrobe-match-actions .button {
+  min-height: max(38px, calc(40px * var(--font-scale, 1)));
+  padding: max(7px, calc(8px * var(--font-scale, 1))) max(8px, calc(10px * var(--font-scale, 1)));
+  border-radius: var(--action-radius);
+  font-size: .82rem;
+  font-weight: 700;
+  box-shadow: none;
+}
+.button-large {
+  min-height: max(48px, calc(52px * var(--font-scale, 1)));
+  padding: max(11px, calc(13px * var(--font-scale, 1))) max(15px, calc(20px * var(--font-scale, 1)));
+  font-size: .98rem;
+}
+
+/* Secondary/icon controls use the same theme-aware surface, border and radius. */
+.theme-toggle,
+.icon-control,
+.dialog-close,
+.wardrobe-filter,
+.save-style-button {
+  appearance: none;
+  border: 1px solid var(--action-secondary-border);
+  border-radius: var(--action-radius);
+  color: var(--action-secondary-fg);
+  background: var(--action-secondary-bg);
+  font-family: inherit;
+  font-weight: 700;
+  box-shadow: none;
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease;
+}
+.theme-toggle,
+.icon-control {
+  min-height: var(--action-control-height);
+  padding: max(7px, calc(8px * var(--font-scale, 1))) max(10px, calc(11px * var(--font-scale, 1)));
+  font-size: .83rem;
+}
+.theme-toggle:hover,
+.icon-control:hover,
+.dialog-close:hover,
+.wardrobe-filter:hover,
+.save-style-button:hover {
+  color: var(--action-secondary-fg);
+  background: var(--action-hover-bg);
+  border-color: var(--action-primary-bg);
+}
+.dialog-close {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: max(38px, calc(40px * var(--font-scale, 1)));
+  height: max(38px, calc(40px * var(--font-scale, 1)));
+  min-height: 0;
+  padding: 0;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+.save-style-button {
+  display: inline-grid;
+  place-items: center;
+  width: max(36px, calc(38px * var(--font-scale, 1)));
+  height: max(36px, calc(38px * var(--font-scale, 1)));
+  min-height: 0;
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.save-style-button[aria-pressed="true"] {
+  color: var(--bad, #a63d42);
+  border-color: var(--bad, #a63d42);
+}
+
+/* Segmented controls and tabs express selection without creating a competing button style. */
+.font-control {
+  border: 1px solid var(--action-secondary-border);
+  border-radius: var(--action-radius);
+  background: var(--action-hover-bg);
+}
+.font-control button {
+  min-height: max(29px, calc(31px * var(--font-scale, 1)));
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--ink-soft);
+  background: transparent;
+  font-weight: 700;
+}
+.font-control button[aria-pressed="true"] {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg);
+  border-color: var(--action-primary-bg);
+}
+.wardrobe-filter {
+  min-height: max(38px, calc(40px * var(--font-scale, 1)));
+  padding: max(7px, calc(8px * var(--font-scale, 1))) max(11px, calc(13px * var(--font-scale, 1)));
+  font-size: .86rem;
+}
+.wardrobe-filter.is-active {
+  color: var(--action-primary-fg);
+  background: var(--action-primary-bg);
+  border-color: var(--action-primary-bg);
+}
+.ensemble-tab {
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: .95rem;
+}
+.ensemble-tab.is-active {
+  color: var(--blue-ink);
+  border-bottom-color: var(--blue);
+}
+
+/* Text actions stay intentionally quiet, using the same theme accent as links. */
+.text-link,
+.password-toggle,
+.signout-button,
+.side-signout {
+  color: var(--blue-ink);
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
+.text-link:hover,
+.password-toggle:hover,
+.signout-button:hover,
+.side-signout:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+input[type="file"]::file-selector-button {
+  min-height: max(34px, calc(36px * var(--font-scale, 1)));
+  padding: max(6px, calc(7px * var(--font-scale, 1))) max(9px, calc(10px * var(--font-scale, 1)));
+  border: 1px solid var(--action-secondary-border);
+  border-radius: var(--action-radius);
+  background: var(--action-secondary-bg);
+  color: var(--action-secondary-fg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+input[type="file"]::file-selector-button:hover {
+  background: var(--action-hover-bg);
+  border-color: var(--action-primary-bg);
+}
