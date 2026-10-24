@@ -1780,6 +1780,12 @@
 
   function switchView(view) {
     if (view === 'profile') { view = 'discover'; state.activeStyleWorkspaceTab = 'profile'; }
+    // The completion message confirms the immediate save only. Saved results remain
+    // in the profile, so do not show the old success banner after leaving this view.
+    if (state.currentView === 'skin-analysis' && view !== 'skin-analysis') {
+      const status = $('#skin-analysis-run-status');
+      if (status?.classList.contains('is-success')) setSkinAnalysisStatus('', 'info');
+    }
     state.currentView = view;
     $$('.app-view').forEach(panel => {
       const active = panel.dataset.viewPanel === view;

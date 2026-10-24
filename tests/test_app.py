@@ -674,7 +674,8 @@ def test_app_ui_uses_one_selfie_and_one_consent_for_combined_skin_analyses(clien
     response = client.get("/app")
     html = response.text
     assert "Facial colour tones" in html
-    assert "One selfie powers both analyses." in html
+    assert "Facial &amp; skin health" in html
+    assert "One selfie powers both analyses." not in html
     assert "Choose a clear, front-facing selfie. One consent starts both analyses." not in html
     assert "It stays in this browser unless you replace it." not in html
     assert "These preferences also guide skincare suggestions in Ensemble Style." not in html
@@ -696,6 +697,22 @@ def test_app_ui_uses_one_selfie_and_one_consent_for_combined_skin_analyses(clien
     assert "/api/tasks/color/" in script
     assert "/api/tasks/skincare/" in script
 
+
+
+def test_skin_analysis_success_message_clears_when_leaving_section():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    switch_start = script.index("  function switchView(view) {")
+    switch_end = script.index("\n  async function saveProfile", switch_start)
+    switch_view = script[switch_start:switch_end]
+    leave_branch_start = switch_view.index("if (state.currentView === 'skin-analysis' && view !== 'skin-analysis')")
+    leave_branch_end = switch_view.index("    state.currentView = view;", leave_branch_start)
+    leave_branch = switch_view[leave_branch_start:leave_branch_end]
+    assert "status?.classList.contains('is-success')" in leave_branch
+    assert "setSkinAnalysisStatus('', 'info')" in leave_branch
+    # Only the transient message clears; analysis results remain saved.
+    assert "state.profile.skinAnalysis" not in leave_branch
+    assert "state.profile.skinHealthAnalysis" not in leave_branch
 
 
 def test_combined_skin_analysis_explains_small_face_errors_and_highlights_them():
