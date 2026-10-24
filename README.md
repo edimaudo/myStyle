@@ -1,6 +1,6 @@
 # myStyle
 
-myStyle is a responsive personal-styling web app built with **FastAPI, Jinja2, and browser-side storage**. It combines seasonal clothing inspiration, a saved style profile, facial colour-tone analysis, optional skin-health analysis for skincare discovery, virtual try-on, shopping comparisons, and a private closet catalogue.
+Your personal styling concierge. It combines seasonal clothing inspiration, a saved style profile, facial colour-tone analysis, optional skin-health analysis for skincare discovery, virtual try-on, shopping comparisons, and a private closet catalogue.
 
 ## Product overview
 
