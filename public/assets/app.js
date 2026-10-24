@@ -1149,7 +1149,10 @@
     if (!target) { renderSkincareRecommendations(); return; }
     metrics = normalizeSkinHealthMetrics(metrics) || getSavedSkinHealthMetrics();
     if (!metrics || !Object.keys(metrics).length) {
-      target.innerHTML = '<div class="skin-empty-state"><strong>No skin-health results yet</strong><p>Run skin-health analysis to see cosmetic indicators and personalized product-category suggestions.</p></div>';
+      const hasColourResults = hasSavedColourAnalysis();
+      target.innerHTML = hasColourResults
+        ? '<div class="skin-empty-state"><strong>Your saved scan includes colour tones only</strong><p>The earlier scan did not request skin-health metrics. Select Analyze my skin once to refresh colour tones and add skin-health results using the same selfie.</p></div>'
+        : '<div class="skin-empty-state"><strong>No skin-health results yet</strong><p>Analyze your selfie once to view facial colour tones and skin-health indicators together.</p></div>';
       renderSkincareRecommendations();
       return;
     }
@@ -1183,75 +1186,14 @@
     }
   }
 
-  async function pollSkincareTask(taskId, maxAttempts = 30) {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise(resolve => window.setTimeout(resolve, 3000));
-      const result = await apiFetch(`/api/tasks/skincare/${encodeURIComponent(taskId)}`, { method: 'GET' });
-      if (result.status === 'success' || result.status === 'error') return result;
-      const button = $('#run-skincare-analysis');
-      if (button) button.textContent = 'Analyzing skin health…';
-    }
-    throw new Error('Skin-health analysis is taking longer than expected. Please try again in a moment.');
-  }
-
-  async function runSkincareAnalysis() {
-    if (state.skinPhotoChangePromise) {
-      try { await state.skinPhotoChangePromise; } catch (_) { return; }
-    }
-    const selectedPhoto = $('#skin-photo')?.files?.[0];
-    const photo = selectedPhoto || state.cachedImages.skinAnalysis;
-    const photoGeneration = state.skinPhotoGeneration;
-    if (!photo) { showAlert('Choose a front-facing JPG, JPEG or PNG selfie first.', 'error'); return; }
-    if (!$('#skincare-consent')?.checked) { showAlert('Consent is required before sending your selfie to YouCam for skin-health analysis.', 'error'); return; }
-    if (!state.config.youcam_configured) { showAlert('YouCam is not configured for this deployment. Your selfie has not been uploaded.', 'error'); return; }
-    const photoMimeType = supportedPhotoMimeType(photo);
-    if (!photoMimeType) { showAlert('Use a JPG, JPEG or PNG selfie.', 'error'); return; }
-    if (!photo.size || photo.size > 9_500_000) { showAlert('Choose a non-empty image smaller than 9.5 MB.', 'error'); return; }
-    let dimensions;
-    try { dimensions = await getImageDimensions(photo); }
-    catch (error) { showAlert(error.message, 'error'); return; }
-    if (Math.min(dimensions.width, dimensions.height) < 480) {
-      showAlert('For skin-health analysis, the shorter side of the photo must be at least 480 pixels. A 720 × 1,080 pixel photo works well.', 'error'); return;
-    }
-    if (Math.max(dimensions.width, dimensions.height) > 4096) {
-      showAlert('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', 'error'); return;
-    }
-    if (!isCurrentSkinPhoto(photo, photoGeneration)) {
-      showAlert('The selected selfie changed during validation. Please start the analysis again for the current photo.', 'error'); return;
-    }
-    if (selectedPhoto) { try { await rememberPhoto('skinAnalysis', selectedPhoto); } catch (error) { showAlert(error.message, 'error'); return; } }
-    state.profile.skincarePreferences = readSkincarePreferencesFromUI();
-    try { await persistProfile(); } catch (error) { showAlert(`Could not save skincare preferences: ${error.message}`, 'error'); return; }
-    const button = $('#run-skincare-analysis');
-    button.disabled = true;
-    button.textContent = 'Starting analysis…';
-    try {
-      const form = new FormData();
-      form.append('photo', normalizedPhotoBlob(photo), photo.name || `mystyle-skincare.${photoMimeType === 'image/png' ? 'png' : 'jpg'}`);
-      form.append('consent', 'true');
-      const task = await apiFetch('/api/skincare-analysis', { method: 'POST', body: form });
-      button.textContent = 'Analyzing skin health…';
-      const result = await pollSkincareTask(task.task_id);
-      if (!isCurrentSkinPhoto(photo, photoGeneration)) throw new Error('The selfie changed while analysis was running. The result was discarded; run skin-health analysis again for the current photo.');
-      if (result.status === 'error') throw new Error(result.message || 'Skin-health analysis could not be completed.');
-      const metrics = normalizeSkinHealthMetrics(result.metrics || result) || {};
-      if (!Object.keys(metrics).length) throw new Error('YouCam completed the task but did not return recognizable skin-health scores. Check that Skin Analysis v2.1 is enabled for your account.');
-      state.profile.skinHealthAnalysis = metrics;
-      state.profile.skinHealthAnalysisUpdatedAt = new Date().toISOString();
-      await persistProfile();
-      renderSkinHealthAnalysis(metrics);
-      showAlert('Skin-health analysis complete. Skincare suggestions are available in Ensemble Style.', 'good');
-    } catch (error) {
-      showAlert(error.message || 'YouCam could not complete skin-health analysis.', 'error');
-    } finally {
-      button.disabled = false;
-      button.textContent = 'Analyze skin health';
-    }
-  }
-
-  async function validateImageDimensions(file) {
+  async function validateImageDimensions(file, minimumSide = 320) {
     const dimensions = await getImageDimensions(file);
-    if (dimensions.width < 320 || dimensions.height < 320) throw new Error('The image must be at least 320 × 320 pixels. Choose a larger photo.');
+    if (dimensions.width < minimumSide || dimensions.height < minimumSide) {
+      const guidance = minimumSide >= 480
+        ? 'For both skin analyses, the shorter side must be at least 480 pixels. A 720 × 1,080 pixel photo works well.'
+        : 'The image must be at least 320 × 320 pixels. Choose a larger photo.';
+      throw new Error(guidance);
+    }
     if (Math.max(dimensions.width, dimensions.height) > 4096) throw new Error('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.');
     return dimensions;
   }
@@ -1293,7 +1235,7 @@
     }
     if (hadColourResults || usedDetectedPalette) await requestRecommendations(state.lastQuery);
     if (hadResults && persisted) {
-      showAlert('New selfie selected. Previous colour and skin-health results were cleared. Run either analysis again to use this photo.', 'info');
+      showAlert('New selfie selected. Previous results were cleared. Run both analyses together to use this photo.', 'info');
     }
     return true;
   }
@@ -1304,14 +1246,13 @@
     const pending = (async () => {
       if (!supportedPhotoMimeType(file)) throw new Error('Choose a JPG, JPEG or PNG photo.');
       if (!file.size || file.size > 9_500_000) throw new Error('Choose a non-empty photo smaller than 9.5 MB.');
-      await validateImageDimensions(file);
+      await validateImageDimensions(file, 480);
       const previous = state.cachedImages.skinAnalysis;
       const replaced = !isSamePhotoFile(previous, file);
       await rememberPhoto('skinAnalysis', file);
       if (replaced) {
         state.skinPhotoGeneration += 1;
-        if ($('#skin-consent')) $('#skin-consent').checked = false;
-        if ($('#skincare-consent')) $('#skincare-consent').checked = false;
+        if ($('#skin-analysis-consent')) $('#skin-analysis-consent').checked = false;
         await clearAnalysesForReplacedPhoto();
       }
     })();
@@ -1360,10 +1301,17 @@
       await new Promise(resolve => window.setTimeout(resolve, 3000));
       const result = await apiFetch(`/api/tasks/color/${encodeURIComponent(taskId)}`, { method: 'GET' });
       if (result.status === 'success' || result.status === 'error') return result;
-      const button = $('#run-skin-analysis');
-      if (button) button.textContent = 'Analyzing colour tones…';
     }
-    throw new Error('Analysis is taking longer than expected. Please try again in a moment.');
+    throw new Error('Facial colour-tone analysis is taking longer than expected. Please try again in a moment.');
+  }
+
+  async function pollSkincareTask(taskId, maxAttempts = 30) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => window.setTimeout(resolve, 3000));
+      const result = await apiFetch(`/api/tasks/skincare/${encodeURIComponent(taskId)}`, { method: 'GET' });
+      if (result.status === 'success' || result.status === 'error') return result;
+    }
+    throw new Error('Skin-health analysis is taking longer than expected. Please try again in a moment.');
   }
 
   function applySkinAnalysisToProfile(colors) {
@@ -1375,64 +1323,113 @@
     state.profile.colorScheme = 'selfie';
   }
 
-  async function runSkinAnalysis() {
+  async function runCombinedSkinAnalysis() {
     if (state.skinPhotoChangePromise) {
       try { await state.skinPhotoChangePromise; } catch (_) { return; }
     }
     const selectedPhoto = $('#skin-photo')?.files?.[0];
     const photo = selectedPhoto || state.cachedImages.skinAnalysis;
     const photoGeneration = state.skinPhotoGeneration;
+    const status = $('#skin-analysis-run-status');
     if (!photo) { showAlert('Choose a front-facing JPG, JPEG or PNG selfie first.', 'error'); return; }
-    if (!$('#skin-consent')?.checked) { showAlert('Consent is required before sending the selfie to YouCam.', 'error'); return; }
-    if (!state.config.youcam_configured) { showAlert('YouCam skin analysis is not configured on this deployment. Add YCE_API_KEY in environment variables. Your selfie has not been uploaded.', 'error'); return; }
+    if (!$('#skin-analysis-consent')?.checked) { showAlert('Consent is required before sending your selfie for both analyses.', 'error'); return; }
+    if (!state.config.youcam_configured) { showAlert('YouCam is not configured for this deployment. Your selfie has not been uploaded.', 'error'); return; }
     const photoMimeType = supportedPhotoMimeType(photo);
     if (!photoMimeType) { showAlert('Use a JPG, JPEG or PNG selfie.', 'error'); return; }
     if (!photo.size || photo.size > 9_500_000) { showAlert('Choose a non-empty image smaller than 9.5 MB.', 'error'); return; }
     let dimensions;
     try { dimensions = await getImageDimensions(photo); }
     catch (error) { showAlert(error.message, 'error'); return; }
-    if (dimensions.width < 320 || dimensions.height < 320) {
-      showAlert('The image must be at least 320 × 320 pixels. Choose a larger photo.', 'error');
-      return;
+    if (Math.min(dimensions.width, dimensions.height) < 480) {
+      showAlert('For both skin analyses, the shorter side must be at least 480 pixels. A 720 × 1,080 pixel photo works well.', 'error'); return;
     }
     if (Math.max(dimensions.width, dimensions.height) > 4096) {
-      showAlert('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', 'error');
-      return;
+      showAlert('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', 'error'); return;
     }
     if (!isCurrentSkinPhoto(photo, photoGeneration)) {
-      showAlert('The selected selfie changed during validation. Please start the analysis again for the current photo.', 'error'); return;
+      showAlert('The selected selfie changed during validation. Please start the combined analysis again for the current photo.', 'error'); return;
     }
-    if (selectedPhoto) { try { await rememberPhoto('skinAnalysis', selectedPhoto); } catch (error) { showAlert(error.message, 'error'); return; } }
-    const button = $('#run-skin-analysis');
+    if (selectedPhoto) {
+      try { await rememberPhoto('skinAnalysis', selectedPhoto); }
+      catch (error) { showAlert(error.message, 'error'); return; }
+    }
+    state.profile.skincarePreferences = readSkincarePreferencesFromUI();
+    try { await persistProfile(); }
+    catch (error) { showAlert(`Could not save skincare preferences: ${error.message}`, 'error'); return; }
+
+    const button = $('#run-combined-skin-analysis');
+    if (!button || button.disabled) return;
     button.disabled = true;
-    button.textContent = 'Starting analysis…';
+    button.textContent = 'Analyzing…';
+    if (status) status.textContent = 'Analyzing facial colour tones and skin health from the same selfie…';
     try {
       const form = new FormData();
       form.append('photo', normalizedPhotoBlob(photo), photo.name || `mystyle-selfie.${photoMimeType === 'image/png' ? 'png' : 'jpg'}`);
       form.append('consent', 'true');
-      const task = await apiFetch('/api/color-analysis', { method: 'POST', body: form });
-      button.textContent = 'Analyzing colour tones…';
-      const result = await pollColorTask(task.task_id);
-      if (result.status === 'error') throw new Error(result.message || 'Skin colour analysis could not be completed.');
-      if (!isCurrentSkinPhoto(photo, photoGeneration)) throw new Error('The selfie changed while analysis was running. The result was discarded; run colour analysis again for the current photo.');
-      const colors = result.colors || {};
-      const hasSkinColour = typeof colors.skin_color === 'string' && /^#[0-9a-f]{6}$/i.test(colors.skin_color);
-      if (!hasSkinColour) throw new Error('YouCam completed the task but did not return a usable skin colour value. Try a clearer, evenly lit front-facing selfie.');
-      applySkinAnalysisToProfile(colors);
+      const tasks = await apiFetch('/api/skin-analysis', { method: 'POST', body: form });
+      const [colourResult, healthResult] = await Promise.all([
+        tasks.color_task_id
+          ? pollColorTask(tasks.color_task_id).catch(error => ({ status: 'error', message: error.message }))
+          : Promise.resolve({ status: 'error', message: tasks.color_error || 'YouCam could not start facial colour-tone analysis.' }),
+        tasks.skin_health_task_id
+          ? pollSkincareTask(tasks.skin_health_task_id).catch(error => ({ status: 'error', message: error.message }))
+          : Promise.resolve({ status: 'error', message: tasks.skin_health_error || 'YouCam could not start skin-health analysis.' })
+      ]);
+      if (!isCurrentSkinPhoto(photo, photoGeneration)) {
+        throw new Error('The selfie changed while analysis was running. The results were discarded; run both analyses again for the current photo.');
+      }
+
+      const issues = [];
+      let colourCompleted = false;
+      let healthCompleted = false;
+      if (colourResult.status === 'success') {
+        const colors = colourResult.colors || {};
+        const hasSkinColour = typeof colors.skin_color === 'string' && /^#[0-9a-f]{6}$/i.test(colors.skin_color);
+        if (hasSkinColour) {
+          applySkinAnalysisToProfile(colors);
+          colourCompleted = true;
+        } else {
+          issues.push('Facial colour-tone analysis did not return a usable skin colour value.');
+        }
+      } else {
+        issues.push(`Facial colour tones: ${colourResult.message || tasks.color_error || 'analysis could not be completed.'}`);
+      }
+
+      if (healthResult.status === 'success') {
+        const metrics = normalizeSkinHealthMetrics(healthResult.metrics || healthResult) || {};
+        if (Object.keys(metrics).length) {
+          state.profile.skinHealthAnalysis = metrics;
+          state.profile.skinHealthAnalysisUpdatedAt = new Date().toISOString();
+          healthCompleted = true;
+        } else {
+          issues.push('Skin-health analysis completed without recognizable metrics. Check that Skin Analysis v2.1 is enabled for your account.');
+        }
+      } else {
+        issues.push(`Skin health: ${healthResult.message || tasks.skin_health_error || 'analysis could not be completed.'}`);
+      }
+
+      if (!colourCompleted && !healthCompleted) throw new Error(issues.join(' '));
       await persistProfile();
       renderSkinAnalysis(state.profile.skinAnalysis);
+      renderSkinHealthAnalysis(state.profile.skinHealthAnalysis);
       renderPaletteSelect();
-      const recommendationsUpdated = await requestRecommendations(state.lastQuery);
-      if (recommendationsUpdated) {
-        showAlert('Colour analysis complete. Its colour cues are now guiding Ensemble recommendations.', 'good');
+      renderAccessories(state.accessoryRecommendations);
+      if (colourCompleted) await requestRecommendations(state.lastQuery);
+
+      if (colourCompleted && healthCompleted) {
+        if (status) status.textContent = 'Both analyses are saved. Ensemble Style and Skincare now use the updated results.';
+        showAlert('Both analyses are complete. Your colour notes and skin-health results have been saved.', 'good');
       } else {
-        showAlert('Colour analysis was saved, but Ensemble could not refresh. Return to Ensemble and select Refresh recommendations.', 'error');
+        const message = `Partial results saved. ${issues.join(' ')}`;
+        if (status) status.textContent = message;
+        showAlert(message, 'error');
       }
     } catch (error) {
-      showAlert(error.message || 'YouCam could not complete colour analysis.', 'error');
+      if (status) status.textContent = error.message || 'The combined analysis could not be completed.';
+      showAlert(error.message || 'YouCam could not complete the combined analysis.', 'error');
     } finally {
       button.disabled = false;
-      button.textContent = 'Analyze my colours';
+      button.innerHTML = 'Analyze my skin <span aria-hidden="true">→</span>';
     }
   }
 
@@ -1889,8 +1886,7 @@
     $('#clear-style-search')?.addEventListener('click', () => { $('#style-search').value = ''; requestRecommendations(''); });
     $('#skin-photo')?.addEventListener('change', setSkinPhotoPreview);
     $('#try-on-photo')?.addEventListener('change', setTryOnPhotoPreview);
-    $('#run-skin-analysis')?.addEventListener('click', runSkinAnalysis);
-    $('#run-skincare-analysis')?.addEventListener('click', runSkincareAnalysis);
+    $('#run-combined-skin-analysis')?.addEventListener('click', runCombinedSkinAnalysis);
     document.addEventListener('click', event => {
       if (event.target.closest('#show-skincare-recommendations')) {
         state.activeStyleWorkspaceTab = 'ensemble';
@@ -1935,7 +1931,7 @@
       await requestRecommendations('');
       if (!state.config.youcam_configured) {
         const note = $('#skin-photo-help');
-        if (note) note.innerHTML = '<strong>YouCam analysis is not configured on this deployment</strong><p>Add YCE_API_KEY to the server environment to enable live colour-tone and skin-health analysis. A selfie is not uploaded until a configured workflow is started with your separate consent.</p>';
+        if (note) note.innerHTML = '<strong>YouCam analysis is not configured on this deployment</strong><p>Add YCE_API_KEY to the server environment to enable live colour-tone and skin-health analysis. Your selfie is not uploaded until you start the combined analysis and provide consent.</p>';
         const skincareStatus = $('#skincare-status');
         if (skincareStatus && state.profile.skinHealthAnalysis && Object.keys(state.profile.skinHealthAnalysis).length) skincareStatus.textContent = 'Your saved skin-health analysis is available, but new scans require YouCam access.';
       }

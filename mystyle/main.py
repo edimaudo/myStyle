@@ -816,6 +816,47 @@ async def skincare_analysis(request: Request, photo: UploadFile = File(...), con
     }
 
 
+@app.post("/api/skin-analysis")
+async def combined_skin_analysis(request: Request, photo: UploadFile = File(...), consent: bool = Form(...)):
+    """Upload one consented selfie once and start both colour-tone and skin-health tasks."""
+    require_session(request)
+    if not consent:
+        raise HTTPException(status_code=400, detail="Consent is required before sending your selfie for both facial colour-tone and skin-health analysis.")
+    photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
+    if not photo_bytes or len(photo_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Choose a non-empty selfie smaller than 9.5 MB.")
+    content_type = resolve_photo_content_type(photo.filename, photo.content_type, label="selfie")
+    # Both analysis tasks reference the same provider file ID; do not upload a second copy.
+    file_id = await upload_image_to_yce(photo_bytes, photo.filename or "mystyle-skin-analysis.jpg", content_type)
+    color_payload, health_payload = await asyncio.gather(
+        create_yce_color_task(file_id),
+        create_yce_skin_health_task(file_id),
+        return_exceptions=True,
+    )
+
+    def task_result(payload: Any, kind: str) -> tuple[str | None, str | None]:
+        if isinstance(payload, Exception):
+            detail = getattr(payload, "detail", None)
+            return None, str(detail or f"YouCam could not start {kind} analysis.")
+        data = payload.get("data") if isinstance(payload, dict) and isinstance(payload.get("data"), dict) else {}
+        task_id = data.get("task_id")
+        if task_id is None or str(task_id).strip() == "":
+            return None, f"YouCam did not return a task ID for {kind} analysis."
+        return str(task_id), None
+
+    color_task_id, color_error = task_result(color_payload, "facial colour-tone")
+    health_task_id, health_error = task_result(health_payload, "skin-health")
+    if not color_task_id and not health_task_id:
+        raise HTTPException(status_code=502, detail=f"Neither analysis could be started. {color_error or ''} {health_error or ''}".strip())
+    return {
+        "color_task_id": color_task_id,
+        "skin_health_task_id": health_task_id,
+        "color_error": color_error,
+        "skin_health_error": health_error,
+        "message": "Both analyses use the same uploaded selfie.",
+    }
+
+
 @app.post("/api/try-on")
 async def try_on(
     request: Request,

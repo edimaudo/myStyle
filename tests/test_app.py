@@ -669,18 +669,27 @@ def test_non_image_upload_is_rejected(client):
     assert response.status_code == 415
 
 
-def test_app_ui_uses_selfie_for_separate_colour_and_skin_health_analyses(client):
+def test_app_ui_uses_one_selfie_and_one_consent_for_combined_skin_analyses(client):
     signed_in(client)
     response = client.get("/app")
     html = response.text
-    assert "Facial colour-tone analysis" in html
-    assert "Use one selfie for two separate analyses" in html
+    assert "Facial colour tones" in html
+    assert "One selfie for colour and skin-health insights." in html
     assert "try-on-dialog" in html
     assert "Skin analysis" in html
+    assert html.count('id="skin-photo"') == 1
+    assert html.count('id="skin-analysis-consent"') == 1
+    assert html.count('id="run-combined-skin-analysis"') == 1
+    assert 'id="skin-consent"' not in html
+    assert 'id="skincare-consent"' not in html
+    assert 'id="run-skin-analysis"' not in html
+    assert 'id="run-skincare-analysis"' not in html
+    assert 'class="skin-analysis-results-grid"' in html
     script = (__import__("pathlib").Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()
-    assert "runSkinAnalysis" in script
-    assert "/api/color-analysis" in script
+    assert "async function runCombinedSkinAnalysis()" in script
+    assert "const tasks = await apiFetch('/api/skin-analysis'" in script
     assert "/api/tasks/color/" in script
+    assert "/api/tasks/skincare/" in script
 
 
 def test_app_ui_has_style_quiz_custom_palette_and_saved_feedback(client):
@@ -907,7 +916,7 @@ def test_all_button_families_share_authoritative_theme_aware_tokens():
     assert ".wardrobe-match-actions .button" in controls
     assert "--action-control-height: max(40px, calc(44px * var(--font-scale, 1)))" in controls
     assert 'input[type="file"]::file-selector-button' in controls
-    assert all("marketing-controls.css?v=20261024-closet-skincare-quiz" in template.read_text(encoding="utf-8") for template in templates)
+    assert all("marketing-controls.css?v=20261024-combined-skin-analysis" in template.read_text(encoding="utf-8") for template in templates)
 
 
 def test_button_design_uses_shared_theme_and_font_scale_tokens():
@@ -947,6 +956,82 @@ def test_skincare_analysis_without_provider_key_does_not_upload(client, monkeypa
     )
     assert response.status_code == 503
     assert "not configured" in response.json()["detail"].lower()
+
+
+def test_combined_skin_analysis_uploads_one_selfie_and_starts_both_tasks(client, monkeypatch):
+    csrf = signed_in(client)
+    uploads = []
+    task_sources = []
+
+    async def fake_upload(image_bytes, filename, content_type):
+        uploads.append((image_bytes, filename, content_type))
+        return "shared-yce-file-id"
+
+    async def fake_color_task(file_id):
+        task_sources.append(("colour", file_id))
+        return {"data": {"task_id": "colour-task-123"}}
+
+    async def fake_health_task(file_id):
+        task_sources.append(("health", file_id))
+        return {"data": {"task_id": "health-task-456"}}
+
+    monkeypatch.setattr(main, "upload_image_to_yce", fake_upload)
+    monkeypatch.setattr(main, "create_yce_color_task", fake_color_task)
+    monkeypatch.setattr(main, "create_yce_skin_health_task", fake_health_task)
+    response = client.post(
+        "/api/skin-analysis",
+        headers={"X-CSRF-Token": csrf},
+        data={"consent": "true"},
+        files={"photo": ("selfie.jpg", b"same-selfie-bytes", "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["color_task_id"] == "colour-task-123"
+    assert body["skin_health_task_id"] == "health-task-456"
+    assert len(uploads) == 1
+    assert {file_id for _, file_id in task_sources} == {"shared-yce-file-id"}
+    assert {kind for kind, _ in task_sources} == {"colour", "health"}
+
+
+def test_combined_skin_analysis_requires_one_explicit_consent(client, monkeypatch):
+    csrf = signed_in(client)
+    monkeypatch.setattr(main, "YCE_API_KEY", "test-key")
+    response = client.post(
+        "/api/skin-analysis",
+        headers={"X-CSRF-Token": csrf},
+        data={"consent": "false"},
+        files={"photo": ("selfie.jpg", b"fake-image", "image/jpeg")},
+    )
+    assert response.status_code == 400
+    assert "both facial colour-tone and skin-health analysis" in response.json()["detail"].lower()
+
+
+def test_combined_skin_analysis_returns_partial_task_errors_when_one_feature_is_unavailable(client, monkeypatch):
+    csrf = signed_in(client)
+
+    async def fake_upload(image_bytes, filename, content_type):
+        return "shared-yce-file-id"
+
+    async def fake_color_task(file_id):
+        return {"data": {"task_id": "colour-task-123"}}
+
+    async def fail_health_task(file_id):
+        raise main.HTTPException(status_code=502, detail="Skin Analysis v2.1 is not enabled.")
+
+    monkeypatch.setattr(main, "upload_image_to_yce", fake_upload)
+    monkeypatch.setattr(main, "create_yce_color_task", fake_color_task)
+    monkeypatch.setattr(main, "create_yce_skin_health_task", fail_health_task)
+    response = client.post(
+        "/api/skin-analysis",
+        headers={"X-CSRF-Token": csrf},
+        data={"consent": "true"},
+        files={"photo": ("selfie.jpg", b"fake-image", "image/jpeg")},
+    )
+    assert response.status_code == 200
+    assert response.json()["color_task_id"] == "colour-task-123"
+    assert response.json()["skin_health_task_id"] is None
+    assert "not enabled" in response.json()["skin_health_error"]
 
 
 def test_skincare_task_uses_v21_and_only_sd_analysis_features(monkeypatch):
@@ -1048,16 +1133,17 @@ def test_skincare_is_available_in_skin_analysis_and_ensemble_with_four_retailers
     css = (root / "public" / "assets" / "style.css").read_text(encoding="utf-8")
     assert 'data-ensemble-tab="skincare"' in html
     assert 'data-ensemble-panel="skincare"' in html
-    assert 'id="run-skincare-analysis"' in html
-    assert 'id="skincare-consent"' in html
+    assert 'id="run-combined-skin-analysis"' in html
+    assert 'id="skin-analysis-consent"' in html
     assert 'id="skin-health-analysis-preview"' in html
     assert 'id="skincare-recommendation-grid"' in html
     assert 'id="skincare-sensitivity"' in html
     assert 'id="skincare-budget"' in html
-    assert "async function runSkincareAnalysis()" in script
+    assert "async function runCombinedSkinAnalysis()" in script
     assert "async function pollSkincareTask(" in script
-    assert "/api/skincare-analysis" in script
+    assert "'/api/skin-analysis'" in script
     assert "/api/tasks/skincare/" in script
+    assert "'/api/skincare-analysis'" not in script
     assert "skinHealthAnalysisUpdatedAt" in script
     assert "function skincareProductSuggestions(" in script
     assert "https://www.sephora.com/ca/en/search?keyword=" in script
@@ -1087,10 +1173,9 @@ def test_replacing_selfie_clears_old_colour_and_skin_health_results():
     assert "async function clearAnalysesForReplacedPhoto()" in script
     assert "state.profile.skinAnalysis = null;" in script
     assert "state.profile.skinHealthAnalysis = null;" in script
-    assert "New selfie selected. Previous colour and skin-health results were cleared." in script
+    assert "New selfie selected. Previous results were cleared. Run both analyses together to use this photo." in script
     assert "state.skinPhotoGeneration += 1;" in script
-    assert "if ($('#skin-consent')) $('#skin-consent').checked = false;" in script
-    assert "if ($('#skincare-consent')) $('#skincare-consent').checked = false;" in script
+    assert "if ($('#skin-analysis-consent')) $('#skin-analysis-consent').checked = false;" in script
     assert "isCurrentSkinPhoto(photo, photoGeneration)" in script
 
 
@@ -1103,7 +1188,7 @@ def test_skincare_reuses_legacy_and_wrapped_skin_health_results():
     assert "profile.skin_health_analysis, profile.skinHealth, profile.skinAnalysis" in script
     assert "const migratedHealth = getSavedSkinHealthMetricsFromProfile(state.profile);" in script
     assert "state.profile.skinHealthAnalysis = migratedHealth;" in script
-    assert "normalizeSkinHealthMetrics(result.metrics || result)" in script
+    assert "normalizeSkinHealthMetrics(healthResult.metrics || healthResult)" in script
 
 
 def test_skincare_tab_reuses_existing_colour_analysis_instead_of_blocking_on_new_scan():

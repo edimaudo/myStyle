@@ -992,10 +992,6 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
 .skin-health-metric span { color: var(--ink); font-size: 1rem; font-weight: 750; overflow-wrap: anywhere; }
 .skincare-analysis-controls { display: grid; gap: 14px; }
 .skincare-preferences-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.skincare-consent { max-width: 920px; }
-.skincare-analysis-card > .profile-card-heading { margin-bottom: 15px; }
-.skincare-analysis-card .small-note { margin: 0; }
-.skincare-analysis-card #run-skincare-analysis { justify-self: start; }
 .skincare-ensemble-panel { min-width: 0; }
 .skincare-recommendation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
 .skincare-product-card { min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 18px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow-soft); }
@@ -1016,4 +1012,64 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
   .skin-health-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .skincare-product-card { padding: 14px; }
   .skincare-retailer-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* Combined selfie workflow: one consent and one shared source image for both analyses. */
+.skin-analysis-input-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(240px, .85fr);
+  gap: 22px;
+  align-items: start;
+}
+.skin-photo-input-column,
+.skin-analysis-preference-column { min-width: 0; }
+.skin-analysis-preference-column {
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+.skin-analysis-preference-column .small-note { margin: 12px 0 0; color: var(--ink-faint); font-size: .78rem; line-height: 1.55; }
+.skin-analysis-card .skincare-preferences-grid { margin: 0; }
+.skin-analysis-card .skin-consent { margin: 6px 0 0; max-width: 100%; }
+.skin-analysis-card #run-combined-skin-analysis { justify-self: start; min-width: 180px; }
+#skin-analysis-run-status:empty { display: none; }
+.skin-analysis-results-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 18px;
+  margin-top: 24px;
+}
+.skin-analysis-result-panel {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.skin-analysis-result-heading { margin: 0 0 12px; }
+.skin-analysis-result-heading h2 { margin: 0 0 5px; font-size: 1.04rem; }
+.skin-analysis-result-heading p { margin: 0; color: var(--ink-soft); font-size: .8rem; line-height: 1.5; }
+.skin-analysis-result-panel .skin-analysis-preview,
+.skin-analysis-result-panel .skin-health-analysis-preview {
+  min-height: 190px;
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.skin-analysis-result-panel .skin-health-results { gap: 12px; }
+.skin-analysis-result-panel .skin-health-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.skin-analysis-result-panel .skin-health-metric { padding: 10px; }
+.skin-analysis-result-panel .skin-health-results .small-note { margin: 0; }
+.skin-analysis-result-panel .skin-health-results #show-skincare-recommendations { justify-self: start; }
+@media (max-width: 920px) {
+  .skin-analysis-input-grid,
+  .skin-analysis-results-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .skin-analysis-result-panel { padding: 14px; }
+  .skin-analysis-result-panel .skin-health-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
