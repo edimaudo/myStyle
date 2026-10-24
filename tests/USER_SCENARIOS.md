@@ -49,7 +49,7 @@
 5. With a valid `YCE_API_KEY`, verify the server uploads the photo to YouCam, creates a skin-tone-analysis task, polls it and returns detected colour values.
 6. Confirm skin/hair/eye/brow/lip colour swatches render, the active palette switches to the skin-analysis-guided option, and recommendations refresh.
 7. Return to Ensemble and confirm the visible skin-analysis summary appears above the recommendations and recommendation reasons identify skin-colour matches where relevant.
-8. Confirm only returned colour values are saved; the actual selfie is not stored in IndexedDB.
+8. Confirm returned colour values and the reusable selfie are stored in IndexedDB, and the selfie is not uploaded again without separate consent.
 9. Without `YCE_API_KEY`, confirm the user sees a clear configuration message and there is no mock success result.
 
 ## Limitations to verify in staging
@@ -57,3 +57,23 @@
 - Editorial images and target price values are inspiration only.
 - Buy opens official store search pages for comparable products, not guaranteed exact SKUs or an affiliate feed.
 - Gemini and YouCam live integration require provider keys and are not validated by mocked unit tests.
+
+
+## Skincare recommendations and saved results
+
+1. Run Facial colour-tone analysis and Skin-health analysis separately, using the same selected selfie and checking the separate consent each time.
+2. Open Ensemble Style → Skincare. Before a skin-health result exists, confirm only the “Start with skin-health analysis” prompt is shown in the panel.
+3. After a successful skin-health task, return to Ensemble Style → Skincare and verify the stored metrics drive skincare category suggestions without running analysis again.
+4. Change skin sensitivity and budget. Confirm the existing recommendations update using the saved analysis and preferences.
+5. Open Style quiz and verify it displays existing facial colour notes and skin-health indicators plus the saved sensitivity preference.
+6. Change the skin-sensitivity preference in the quiz, submit, and verify the preference remains synchronized with Skincare.
+
+## My closet skincare items and photo picker
+
+1. Open My closet and select Skincare product.
+2. Confirm the category dropdown shows cleanser, moisturizer, serum, sunscreen, eye care, treatment, toner/essence, and other skincare.
+3. Confirm clothing-only colour and season fields are hidden for skincare, while product details are available.
+4. Add a JPG, JPEG or PNG product/package photo with a name and optional notes.
+5. Verify the new item appears under All and Skincare, persists after reload, and can be removed.
+6. Verify skincare items are not offered as clothing virtual try-on references and do not appear in clothing/accessory matches in Ensemble.
+7. Check the Choose file button at mobile and desktop widths, in light/dark themes and small/medium/large text sizes.

@@ -301,8 +301,44 @@
     setValue('#quick-color-scheme', state.profile.colorScheme || 'earth');
     setValue('#quick-custom-colors', state.profile.customColors);
     setValue('#quiz-custom-colors', state.profile.customColors);
+    hydrateSkincarePreferences();
+    renderQuizSkinInfo();
     updateUserIdentity();
     renderProfileSkinSummary(state.profile.skinAnalysis);
+  }
+
+
+  function renderQuizSkinInfo() {
+    const target = $('#quiz-skin-info');
+    if (!target) return;
+    const colours = state.profile.skinAnalysis || {};
+    const health = state.profile.skinHealthAnalysis || {};
+    const colourKeys = [
+      ['skin_color', 'Skin'], ['hair_color', 'Hair'], ['eye_color', 'Eyes'],
+      ['eyebrow_color', 'Brows'], ['lip_color', 'Lips']
+    ];
+    const colourChips = colourKeys.filter(([key]) => /^#[0-9a-f]{6}$/i.test(colours[key] || '')).map(([key, label]) =>
+      `<span class="quiz-skin-chip"><i style="background:${escapeHTML(colours[key])}"></i><span>${label}</span></span>`).join('');
+    const metricKeys = [
+      ['skin_type', 'Skin type', true], ['moisture', 'Moisture'], ['oiliness', 'Oiliness'],
+      ['redness', 'Redness'], ['pore', 'Pores'], ['acne', 'Breakout indicator'],
+      ['texture', 'Texture'], ['radiance', 'Radiance']
+    ];
+    const metricChips = metricKeys.filter(([key]) => key in health).map(([key, label, isType]) => {
+      const value = isType
+        ? [...new Set(getNestedSkinWords(health[key]).filter(word => /normal|oily|dry|combination/.test(word)))].map(word => word.replace(/^./, char => char.toUpperCase())).join(' · ')
+        : (() => { const score = getNestedSkinScore(health[key]); return score === null ? '' : `${Math.round(score)} / 100`; })();
+      return value ? `<span class="quiz-skin-metric"><strong>${escapeHTML(label)}</strong><small>${escapeHTML(value)}</small></span>` : '';
+    }).filter(Boolean).join('');
+    const hasColours = Boolean(colourChips);
+    const hasHealth = Boolean(metricChips);
+    if (!hasColours && !hasHealth) {
+      target.innerHTML = '<p class="quiz-skin-empty">No skin analysis is saved yet. You can still finish the quiz; run Skin analysis when you want to add detected colour and skin-health information.</p>';
+      return;
+    }
+    const colourStamp = state.profile.skinAnalysisUpdatedAt ? new Date(state.profile.skinAnalysisUpdatedAt).toLocaleString() : '';
+    const healthStamp = state.profile.skinHealthAnalysisUpdatedAt ? new Date(state.profile.skinHealthAnalysisUpdatedAt).toLocaleString() : '';
+    target.innerHTML = `${hasColours ? `<div class="quiz-skin-group"><strong>Facial colour notes</strong>${colourStamp ? `<small>Updated ${escapeHTML(colourStamp)}</small>` : ''}<div class="quiz-skin-chip-row">${colourChips}</div></div>` : ''}${hasHealth ? `<div class="quiz-skin-group"><strong>Skin-health indicators</strong>${healthStamp ? `<small>Updated ${escapeHTML(healthStamp)}</small>` : ''}<div class="quiz-skin-metric-row">${metricChips}</div></div>` : ''}<p class="quiz-skin-footnote">Saved results are reused; choosing this section does not run another analysis.</p>`;
   }
 
   function updateUserIdentity() {
@@ -621,6 +657,13 @@
     const section = $('#ensemble-wardrobe-matches');
     const grid = $('#ensemble-wardrobe-grid');
     if (!section || !grid) return;
+    if (state.activeEnsembleTab === 'skincare') {
+      section.hidden = true;
+      grid.replaceChildren();
+      state.ensembleWardrobeObjectUrls.forEach(url => URL.revokeObjectURL(url));
+      state.ensembleWardrobeObjectUrls = [];
+      return;
+    }
     state.ensembleWardrobeObjectUrls.forEach(url => URL.revokeObjectURL(url));
     state.ensembleWardrobeObjectUrls = [];
     const recommendations = state.activeEnsembleTab === 'accessories'
@@ -639,8 +682,9 @@
       itemType: item.item_type === 'accessory' ? 'accessory' : 'clothing'
     }));
     const matches = state.wardrobeItems.map(wardrobe => {
+      if (wardrobe.item_type === 'skincare') return null;
       if (state.activeEnsembleTab === 'accessories' && wardrobe.item_type !== 'accessory') return null;
-      if (state.activeEnsembleTab === 'clothing' && wardrobe.item_type === 'accessory') return null;
+      if (state.activeEnsembleTab === 'clothing' && wardrobe.item_type !== 'clothing') return null;
       if (wardrobe.season && wardrobe.season !== 'all' && wardrobe.season !== season) return null;
       const colors = new Set((wardrobe.colors || []).map(normalizeMatchValue));
       let best = { score: 0, recommendation: null, colourOverlap: 0, categoryMatch: false };
@@ -671,8 +715,8 @@
       const reason = item.colourOverlap ? `Shares ${item.colors.filter(color => (item.matchedRecommendation.colors || []).map(normalizeMatchValue).includes(normalizeMatchValue(color))).join(', ')} with ${item.matchedRecommendation.name}` : `Same category as ${item.matchedRecommendation.name}`;
       const tryOnAction = wardrobeTryOnKind(item)
         ? `<button class="button button-primary" data-try-on="${escapeHTML(item.id)}" type="button">Try on</button>`
-        : '<span class="wardrobe-tryon-note">Try-on unavailable for this item type</span>';
-      return `<article class="wardrobe-match-card"><img src="${url}" alt="Your wardrobe item ${escapeHTML(item.name)}"><div><p class="wardrobe-match-kicker">Already in your wardrobe</p><h3>${escapeHTML(item.name)}</h3><p>${escapeHTML(reason)}</p><div class="wardrobe-match-actions">${tryOnAction}<button class="button button-outline" data-buy-item="${escapeHTML(item.id)}" type="button">Buy similar</button></div></div></article>`;
+        : '';
+      return `<article class="wardrobe-match-card"><img src="${url}" alt="Your closet item ${escapeHTML(item.name)}"><div><p class="wardrobe-match-kicker">Already in your closet</p><h3>${escapeHTML(item.name)}</h3><p>${escapeHTML(reason)}</p><div class="wardrobe-match-actions">${tryOnAction}<button class="button button-outline" data-buy-item="${escapeHTML(item.id)}" type="button">Buy similar</button></div></div></article>`;
     }).join('');
   }
 
@@ -705,9 +749,29 @@
     if (select.selectedOptions[0]?.disabled || select.selectedOptions[0]?.hidden) {
       select.value = options.find(option => option.dataset.wardrobeType === type)?.value || '';
     }
+    const skincare = type === 'skincare';
+    const coloursField = $('#wardrobe-colours-field');
+    const seasonField = $('#wardrobe-season-field');
+    const notesLabel = $('#wardrobe-notes-label');
+    const notes = $('#wardrobe-notes');
+    if (coloursField) coloursField.hidden = skincare;
+    if (seasonField) seasonField.hidden = skincare;
+    if (notesLabel) notesLabel.innerHTML = `${skincare ? 'Product details' : 'Notes'} <span class="optional-label">optional</span>`;
+    if (notes) notes.placeholder = skincare ? 'e.g. ingredients, skin goals, routine notes…' : 'Fit, material, outfit ideas…';
+    const itemName = $('#wardrobe-item-name');
+    if (itemName) itemName.placeholder = skincare ? 'e.g. Daily hydrating moisturizer' : 'e.g. Navy wool coat';
+    const photoLabel = $('#wardrobe-photo')?.closest('.form-field')?.querySelector('label');
+    if (photoLabel) photoLabel.innerHTML = `${skincare ? 'Product photo' : 'Item photo'} <span class="required-marker">*</span>`;
+    const photoHelp = $('#wardrobe-photo-help');
+    if (photoHelp) photoHelp.textContent = skincare
+      ? 'Add a clear photo of the product or its packaging. JPG, JPEG or PNG under 9.5 MB; the image stays in this browser.'
+      : 'JPG, JPEG or PNG, under 9.5 MB and at least 160 × 160 pixels. The image stays in this browser.';
+    const submit = $('#wardrobe-add-button');
+    if (submit && !submit.disabled) submit.textContent = 'Add to My closet';
   }
 
   function wardrobeTryOnKind(item) {
+    if (item.item_type === 'skincare') return '';
     if (item.item_type === 'clothing') return 'clothing';
     const category = String(item.category || '').toLowerCase();
     if (category.includes('bag') || category.includes('leather goods')) return 'bag';
@@ -721,7 +785,7 @@
     const count = $('#wardrobe-count');
     if (count) count.textContent = String(state.wardrobeItems.length);
     const status = $('#wardrobe-count-copy');
-    if (status) status.textContent = `${state.wardrobeItems.length} ${state.wardrobeItems.length === 1 ? 'piece' : 'pieces'} in your wardrobe`;
+    if (status) status.textContent = `${state.wardrobeItems.length} ${state.wardrobeItems.length === 1 ? 'item' : 'items'} in your closet`;
   }
 
   function renderWardrobe() {
@@ -739,17 +803,33 @@
     });
     empty.hidden = items.length > 0;
     grid.hidden = items.length === 0;
-    if (!items.length) { grid.replaceChildren(); return; }
+    if (!items.length) {
+      const title = $('#wardrobe-empty h2');
+      const copy = $('#wardrobe-empty p');
+      if (!state.wardrobeItems.length) {
+        if (title) title.textContent = 'Your closet is empty.';
+        if (copy) copy.textContent = 'Add clothing, accessories or skincare products to keep your personal items together.';
+      } else {
+        const emptyLabels = { clothing: ['No clothing items yet.', 'Add clothing to keep it in your closet.'], accessory: ['No accessories yet.', 'Add accessories to keep them in your closet.'], skincare: ['No skincare products yet.', 'Add products you already use to keep your routine together.'] };
+        const message = emptyLabels[state.wardrobeFilter] || ['No items in this filter.', 'Choose another filter or add a new item.'];
+        if (title) title.textContent = message[0];
+        if (copy) copy.textContent = message[1];
+      }
+      grid.replaceChildren();
+      return;
+    }
     grid.innerHTML = items.map(item => {
       const url = URL.createObjectURL(item.imageBlob);
       state.wardrobeObjectUrls.push(url);
       const colours = (item.colors || []).map(colour => escapeHTML(colour)).join(' · ');
       const season = item.season && item.season !== 'all' ? item.season[0].toUpperCase() + item.season.slice(1) : 'All seasons';
       const canTry = Boolean(wardrobeTryOnKind(item));
+      const typeLabel = item.item_type === 'accessory' ? 'Accessory' : item.item_type === 'skincare' ? 'Skincare' : 'Clothing';
+      const actionMarkup = canTry ? `<button class="button button-primary" data-try-on="${escapeHTML(item.id)}" type="button">Try on</button>` : '';
       return `<article class="wardrobe-card" data-wardrobe-card="${escapeHTML(item.id)}">
-        <div class="wardrobe-card-media"><img src="${url}" alt="Your photo of ${escapeHTML(item.name)}" loading="lazy" decoding="async"><span class="wardrobe-type-label">${item.item_type === 'accessory' ? 'Accessory' : 'Clothing'}</span></div>
-        <div class="wardrobe-card-content"><p class="wardrobe-card-category">${escapeHTML(item.category)} · ${escapeHTML(season)}</p><h3>${escapeHTML(item.name)}</h3>${colours ? `<p class="wardrobe-colours">${colours}</p>` : ''}${item.notes ? `<p class="wardrobe-notes">${escapeHTML(item.notes)}</p>` : ''}
-          <div class="wardrobe-card-actions">${canTry ? `<button class="button button-primary" data-try-on="${escapeHTML(item.id)}" type="button">Try on</button>` : '<span class="small-note">Virtual try-on is not available for this accessory type yet.</span>'}<button class="button button-outline" data-delete-wardrobe-item="${escapeHTML(item.id)}" type="button">Remove</button></div>
+        <div class="wardrobe-card-media"><img src="${url}" alt="Your photo of ${escapeHTML(item.name)}" loading="lazy" decoding="async"><span class="wardrobe-type-label">${typeLabel}</span></div>
+        <div class="wardrobe-card-content"><p class="wardrobe-card-category">${escapeHTML(item.category)}${item.item_type === 'skincare' ? '' : ` · ${escapeHTML(season)}`}</p><h3>${escapeHTML(item.name)}</h3>${colours ? `<p class="wardrobe-colours">${colours}</p>` : ''}${item.notes ? `<p class="wardrobe-notes">${escapeHTML(item.notes)}</p>` : ''}
+          <div class="wardrobe-card-actions">${actionMarkup}<button class="button button-outline" data-delete-wardrobe-item="${escapeHTML(item.id)}" type="button">Remove</button></div>
         </div></article>`;
     }).join('');
   }
@@ -758,7 +838,7 @@
     event?.preventDefault?.();
     const form = $('#wardrobe-form');
     const file = $('#wardrobe-photo')?.files?.[0];
-    if (!file) { showAlert('Choose a photo of the clothing or accessory you want to add.', 'error'); return; }
+    if (!file) { showAlert('Choose a photo of the item or product you want to add.', 'error'); return; }
     const photoMimeType = supportedPhotoMimeType(file);
     if (!photoMimeType) { showAlert('Use a JPG, JPEG or PNG photo.', 'error'); return; }
     if (!file.size || file.size > 9_500_000) { showAlert('Choose a photo smaller than 9.5 MB.', 'error'); return; }
@@ -770,41 +850,43 @@
       if (dimensions.width < 160 || dimensions.height < 160) throw new Error('Choose a clearer photo at least 160 × 160 pixels.');
       const name = $('#wardrobe-item-name')?.value.trim();
       if (!name) throw new Error('Give this item a name.');
-      const itemType = $('#wardrobe-item-type')?.value === 'accessory' ? 'accessory' : 'clothing';
-      const category = $('#wardrobe-category')?.value || (itemType === 'accessory' ? 'Other accessories' : 'Tops');
-      const colors = String($('#wardrobe-colours')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 8);
+      const rawType = $('#wardrobe-item-type')?.value || 'clothing';
+      const itemType = ['clothing', 'accessory', 'skincare'].includes(rawType) ? rawType : 'clothing';
+      const category = $('#wardrobe-category')?.value || (itemType === 'accessory' ? 'Other accessories' : itemType === 'skincare' ? 'Other skincare' : 'Tops');
+      const colors = itemType === 'skincare' ? [] : String($('#wardrobe-colours')?.value || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 8);
       const id = globalThis.crypto?.randomUUID?.() || `wardrobe-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       const item = {
         id, name, item_type: itemType, category, colors,
-        season: $('#wardrobe-season')?.value || 'all',
+        season: itemType === 'skincare' ? 'all' : ($('#wardrobe-season')?.value || 'all'),
         notes: $('#wardrobe-notes')?.value.trim().slice(0, 400) || '',
         imageBlob: file.slice(0, file.size, photoMimeType), imageType: photoMimeType,
         imageName: file.name || `${id}.jpg`, createdAt: new Date().toISOString(),
       };
       await dbRequest('wardrobe', 'put', item);
       state.wardrobeItems.unshift(item);
+      state.wardrobeFilter = 'all';
       form.reset();
       updateWardrobeCategoryOptions();
       renderWardrobe();
       renderEnsembleWardrobeMatches();
-      showAlert('Added to My wardrobe. The photo stays in this browser.', 'good');
+      showAlert('Added to My closet. The photo stays in this browser.', 'good');
     } catch (error) {
-      showAlert(error.message || 'Could not add this item to My wardrobe.', 'error');
+      showAlert(error.message || 'Could not add this item to My closet.', 'error');
     } finally {
-      if (submit) { submit.disabled = false; submit.textContent = 'Add to My wardrobe'; }
+      if (submit) { submit.disabled = false; submit.textContent = 'Add to My closet'; }
     }
   }
 
   async function removeWardrobeItem(itemId) {
     const item = state.wardrobeItems.find(entry => entry.id === itemId);
     if (!item) return;
-    if (!window.confirm(`Remove “${item.name}” from My wardrobe?`)) return;
+    if (!window.confirm(`Remove “${item.name}” from My closet?`)) return;
     try {
       await dbRequest('wardrobe', 'delete', itemId);
       state.wardrobeItems = state.wardrobeItems.filter(entry => entry.id !== itemId);
       renderWardrobe();
       renderEnsembleWardrobeMatches();
-      showAlert('Item removed from My wardrobe.', 'good');
+      showAlert('Item removed from My closet.', 'good');
     } catch (error) {
       showAlert(`Could not remove this item: ${error.message}`, 'error');
     }
@@ -814,9 +896,9 @@
     if (!colors || !/^#[0-9a-f]{6}$/i.test(colors.skin_color || '')) return null;
     const r = parseInt(colors.skin_color.slice(1, 3), 16);
     const b = parseInt(colors.skin_color.slice(5, 7), 16);
-    if (r - b >= 16) return { label: 'Warm-leaning colour ideas', family: 'warm', colors: ['olive', 'rust', 'camel', 'warm cream', 'terracotta', 'teal'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
-    if (b - r >= 10) return { label: 'Cool-leaning colour ideas', family: 'cool', colors: ['navy', 'berry', 'cobalt', 'cool grey', 'plum', 'icy blue'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
-    return { label: 'Balanced colour ideas', family: 'balanced', colors: ['soft white', 'denim blue', 'sage', 'burgundy', 'taupe', 'charcoal'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
+    if (r - b >= 16) return { label: 'Suggested accent palette', family: 'warm', colors: ['olive', 'rust', 'camel', 'warm cream', 'terracotta', 'teal'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
+    if (b - r >= 10) return { label: 'Suggested accent palette', family: 'cool', colors: ['navy', 'berry', 'cobalt', 'cool grey', 'plum', 'icy blue'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
+    return { label: 'Suggested accent palette', family: 'balanced', colors: ['soft white', 'denim blue', 'sage', 'burgundy', 'taupe', 'charcoal'], note: 'An approximate palette prompt from the detected image colours, not a definitive undertone analysis.' };
   }
 
   function renderProfileSkinSummary(colors = state.profile.skinAnalysis) {
@@ -837,40 +919,27 @@
       swatches.replaceChildren();
       return;
     }
-    const guide = skinPaletteGuide(colors);
     const stamp = state.profile.skinAnalysisUpdatedAt ? new Date(state.profile.skinAnalysisUpdatedAt).toLocaleString() : 'Saved analysis';
-    status.textContent = `${guide?.label || 'Detected colour notes'} · Updated ${stamp}`;
+    status.textContent = `Detected colour notes · Updated ${stamp}`;
     swatches.innerHTML = found.map(([key, label]) => `<span class="profile-skin-swatch-chip"><i style="background:${escapeHTML(colors[key])}"></i><strong>${label}</strong><small>${escapeHTML(colors[key])}</small></span>`).join('');
   }
 
   function renderSkinAnalysis(colors) {
+    renderQuizSkinInfo();
     const target = $('#skin-analysis-preview');
     if (!target) return;
     renderProfileSkinSummary(colors);
     renderSkinHealthAnalysis(state.profile.skinHealthAnalysis);
     if (!colors || !Object.keys(colors).length) {
       target.innerHTML = '<div class="skin-empty-state"><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div>';
-      $('#skin-insight-banner').hidden = true;
       return;
     }
     const order = ['skin_color', 'hair_color', 'eye_color', 'eyebrow_color', 'lip_color'];
     const labels = { skin_color: 'Skin colour', hair_color: 'Hair colour', eye_color: 'Eye colour', eyebrow_color: 'Eyebrow colour', lip_color: 'Lip colour' };
     const detected = order.filter(key => /^#[0-9a-f]{6}$/i.test(colors[key] || '')).map(key => `<div class="analysis-tone"><span style="background:${escapeHTML(colors[key])}"></span><div><strong>${escapeHTML(labels[key])}</strong><small>${escapeHTML(colors[key])}${colors[`${key}_name`] ? ` · ${escapeHTML(colors[`${key}_name`])}` : ''}</small></div></div>`).join('');
-    const guide = skinPaletteGuide(colors);
-    const applicationCopy = state.profile.colorScheme === 'selfie'
-      ? 'Applied to Ensemble: these colour cues now guide recommendation ranking. You can choose another palette in Style profile at any time.'
-      : 'These colour cues are also considered alongside your selected palette.';
-    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div>${guide ? `<div class="analysis-palette-guide"><strong>${escapeHTML(guide.label)}</strong><div class="analysis-palette-swatches">${guide.colors.map(name => `<span>${escapeHTML(name)}</span>`).join('')}</div><p>${escapeHTML(guide.note)}</p></div>` : ''}<p class="analysis-applied-note">${escapeHTML(applicationCopy)}</p></div>`;
-    const banner = $('#skin-insight-banner');
-    if (banner) {
-      if (!guide) {
-        banner.hidden = true;
-      } else {
-        banner.hidden = false;
-        $('#skin-insight-title').textContent = guide.label;
-        $('#skin-insight-copy').textContent = 'Your Style incorporates colour cues from your skin analysis alongside your selected palette';
-      }
-    }
+    const applicationCopy = 'Detected colour values are saved in your profile and can be used as styling context.';
+    target.innerHTML = `<div class="skin-analysis-results"><div class="analysis-heading"><h3>Your colour notes</h3><p>These are detected facial colour values. Use them as styling inspiration.</p></div><div class="analysis-tone-grid">${detected || '<p>No recognized hex colour values were returned by the provider.</p>'}</div><p class="analysis-applied-note">${escapeHTML(applicationCopy)}</p></div>`;
+    renderQuizSkinInfo();
   }
 
   function readSkincarePreferencesFromUI() {
@@ -883,6 +952,7 @@
   function hydrateSkincarePreferences() {
     const preferences = { ...DEFAULT_PROFILE.skincarePreferences, ...(state.profile.skincarePreferences || {}) };
     if ($('#skincare-sensitivity')) $('#skincare-sensitivity').value = preferences.sensitivity;
+    if ($('#quiz-skincare-sensitivity')) $('#quiz-skincare-sensitivity').value = preferences.sensitivity;
     const budget = $('#skincare-budget');
     if (budget) {
       const currency = state.profile.country === 'US' ? 'US$' : 'CA$';
@@ -994,7 +1064,8 @@
     if (!grid || !empty || !status) return;
     const metrics = state.profile.skinHealthAnalysis;
     if (!metrics || !Object.keys(metrics).length) {
-      status.textContent = 'Run skin-health analysis to build your skincare suggestions.';
+      status.textContent = '';
+      status.hidden = true;
       grid.replaceChildren();
       grid.hidden = true;
       empty.hidden = false;
@@ -1002,7 +1073,8 @@
     }
     const preferences = state.profile.skincarePreferences || DEFAULT_PROFILE.skincarePreferences;
     const products = skincareProductSuggestions(metrics, preferences);
-    status.textContent = `Suggestions based on your latest skin-health analysis${state.profile.skinHealthAnalysisUpdatedAt ? ` · Updated ${new Date(state.profile.skinHealthAnalysisUpdatedAt).toLocaleString()}` : ''}.`;
+    status.textContent = `Using your saved skin-health analysis${state.profile.skinHealthAnalysisUpdatedAt ? ` · Updated ${new Date(state.profile.skinHealthAnalysisUpdatedAt).toLocaleString()}` : ''}.`;
+    status.hidden = false;
     empty.hidden = true;
     grid.hidden = false;
     grid.innerHTML = products.map(product => {
@@ -1012,6 +1084,7 @@
   }
 
   function renderSkinHealthAnalysis(metrics = state.profile.skinHealthAnalysis) {
+    renderQuizSkinInfo();
     const target = $('#skin-health-analysis-preview');
     if (!target) { renderSkincareRecommendations(); return; }
     if (!metrics || !Object.keys(metrics).length) {
@@ -1322,7 +1395,7 @@
     if (!item) { showAlert('Could not find the selected look. Refresh Ensemble and try again.', 'error'); return; }
     const isWardrobeItem = Boolean(wardrobeItem);
     if (!isWardrobeItem && !(item.try_on_supported && item.image_kind === 'photo')) {
-      showAlert('Virtual try-on is not available for this reference photo. Add a clear photo of your own item to My wardrobe to try it on.', 'error');
+      showAlert('Virtual try-on is not available for this reference photo. Add a clear photo of your own item to My closet to try it on.', 'error');
       return;
     }
     const itemType = item.item_type || 'clothing';
@@ -1411,7 +1484,7 @@
       form.append('photo', normalizedPhotoBlob(photo), photo.name || `mystyle-try-on.${photoMimeType === 'image/png' ? 'png' : 'jpg'}`);
       if (dialog.dataset.itemSource === 'wardrobe') {
         const wardrobeReference = state.wardrobeItems.find(entry => entry.id === dialog.dataset.wardrobeItemId);
-        if (!wardrobeReference?.imageBlob) throw new Error('That wardrobe photo is no longer available. Open My wardrobe and choose the item again.');
+        if (!wardrobeReference?.imageBlob) throw new Error('That closet photo is no longer available. Open My closet and choose the item again.');
         form.append('item_image', wardrobeReference.imageBlob, wardrobeReference.imageName || 'mystyle-wardrobe-reference.jpg');
         form.append('item_image_url', '');
       } else {
@@ -1461,7 +1534,7 @@
     { title: 'Skin analysis', copy: 'Upload a front-facing selfie and consent to YouCam processing. Detected colour values become visible here and guide accessories.', view: 'skin-analysis' },
     { title: 'Style profile', copy: 'Adjust country and province or state, season, fit, sizes, colour scheme and budget. Save changes to refresh recommendations.', view: 'discover', linkedTab: 'profile' },
     { title: 'Saved pieces', copy: 'Use the heart to keep catalogue concepts in a shortlist for later.', view: 'saved' },
-    { title: 'My wardrobe', copy: 'Add photos of clothes and accessories you already own. They stay in this browser, and supported pieces can be used for virtual try-on.', view: 'wardrobe' },
+    { title: 'My closet', copy: 'Add photos of clothing, accessories and skincare products. They stay in this browser; supported clothing and accessories can be used for virtual try-on.', view: 'wardrobe' },
     { title: 'Virtual try-on', copy: 'Try on your own clothing photo or supported accessory with your saved try-on photo. Processing requires consent and a configured service key.', view: 'wardrobe' }
   ];
 
@@ -1626,6 +1699,7 @@
     state.profile.customColors = $('#quiz-custom-colors')?.value.trim() || '';
     const budget = $('#quiz-budget')?.value || 'any';
     state.profile.budget = budget === 'any' ? 'any' : Number(budget);
+    state.profile.skincarePreferences = { ...(state.profile.skincarePreferences || DEFAULT_PROFILE.skincarePreferences), sensitivity: $('#quiz-skincare-sensitivity')?.value || 'unknown' };
     state.profile.hasCompletedQuiz = true;
     try {
       await persistProfile();
@@ -1764,7 +1838,14 @@
         switchEnsembleTab('skincare');
       }
     });
-    $('#skincare-sensitivity')?.addEventListener('change', persistSkincarePreferences);
+    $('#skincare-sensitivity')?.addEventListener('change', () => {
+      if ($('#quiz-skincare-sensitivity')) $('#quiz-skincare-sensitivity').value = $('#skincare-sensitivity').value;
+      persistSkincarePreferences();
+    });
+    $('#quiz-skincare-sensitivity')?.addEventListener('change', () => {
+      if ($('#skincare-sensitivity')) $('#skincare-sensitivity').value = $('#quiz-skincare-sensitivity').value;
+      persistSkincarePreferences();
+    });
     $('#skincare-budget')?.addEventListener('change', persistSkincarePreferences);
     $('#run-try-on')?.addEventListener('click', runTryOn);
   }
@@ -1795,7 +1876,7 @@
         const note = $('#skin-photo-help');
         if (note) note.innerHTML = '<strong>YouCam analysis is not configured on this deployment</strong><p>Add YCE_API_KEY to the server environment to enable live colour-tone and skin-health analysis. A selfie is not uploaded until a configured workflow is started with your separate consent.</p>';
         const skincareStatus = $('#skincare-status');
-        if (skincareStatus) skincareStatus.textContent = 'Skincare suggestions require YCE_API_KEY and YouCam Skin Analysis v2.1 access. Your selfie has not been uploaded.';
+        if (skincareStatus && state.profile.skinHealthAnalysis && Object.keys(state.profile.skinHealthAnalysis).length) skincareStatus.textContent = 'Your saved skin-health analysis is available, but new scans require YouCam access.';
       }
     } catch (error) {
       showAlert(`${error.message} Refresh the page to retry loading your profile.`, 'error');

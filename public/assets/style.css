@@ -666,10 +666,6 @@ body.mystyle-body, body.mystyle-landing, body.mystyle-auth-body { font-family: '
 @keyframes mystyle-spin { to { transform: rotate(360deg); } }
 .mystyle-no-results { grid-column: 1 / -1; padding: 36px; background: var(--surface); border: 1px dashed var(--line); border-radius: 13px; text-align: center; }
 .mystyle-no-results p { color: var(--ink-soft); }
-.skin-insight-banner { display: flex; align-items: center; gap: 14px; margin-top: 29px; padding: 19px 20px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-blue); }
-.skin-insight-banner[hidden] { display: none; }
-.skin-insight-banner h2 { margin: 3px 0; font-size: 1.2rem; }
-.skin-insight-banner p { margin: 0; color: var(--ink-soft); font-size: .8rem; line-height: 1.55; }
 .quiz-layout { max-width: 940px; }
 .quiz-step-label { display: inline-block; margin-bottom: 5px; color: var(--blue-ink); font-size: .64rem; font-weight: 800; letter-spacing: .15em; }
 .quiz-custom-colours-field { max-width: 550px; margin-top: 19px; }
@@ -783,7 +779,6 @@ body.mystyle-body, body.mystyle-landing, body.mystyle-auth-body { font-family: '
   .analysis-tone-grid { grid-template-columns: 1fr; }
   .skin-local-preview { grid-template-columns: 1fr; }
   .skin-local-preview img { max-height: 220px; }
-  .skin-insight-banner { align-items: flex-start; flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
@@ -881,12 +876,12 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
 .button { border-radius: 6px; }
 .button:hover { transform: none; }
 .button-outline:hover { background: var(--surface-muted); }
-.profile-card, .style-card, .quick-palette-panel, .skin-insight-banner,
+.profile-card, .style-card, .quick-palette-panel,
 .hero-fashion-image, .hero-image, .step-card, .skin-analysis-preview,
 .analysis-tone, .mystyle-hero-visual, .hero-palette-card {
   box-shadow: none !important;
 }
-.profile-card, .style-card, .quick-palette-panel, .skin-insight-banner,
+.profile-card, .style-card, .quick-palette-panel,
 .hero-fashion-image, .hero-image, .step-card, .skin-analysis-preview,
 .hero-palette-card, .skin-analysis-card {
   border-radius: 6px;
@@ -896,7 +891,6 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
 .season-weather-pill { border-radius: 5px; }
 .style-tags span { border-radius: 5px; }
 .style-card-tags span { border-radius: 3px; }
-.skin-insight-banner > div:first-child { flex: 1; min-width: 0; }
 .site-display-controls .theme-label { display: inline !important; }
 .mystyle-search-panel { border-radius: 6px; }
 .mystyle-section-heading { margin-bottom: 24px; }

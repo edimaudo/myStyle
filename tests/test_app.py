@@ -418,12 +418,13 @@ def test_skin_analysis_sits_immediately_below_ensemble_in_sidebar(client):
     assert nav_views[:2] == ["discover", "skin-analysis"]
 
 
-def test_skin_analysis_banner_appears_before_ensemble_recommendations(client):
+def test_redundant_skin_colour_banner_is_removed_from_ensemble(client):
     signed_in(client)
-    response = client.get("/app")
-    page = response.text
-    assert page.index('id="skin-insight-banner"') < page.index('id="recommendation-grid"')
-    assert "Skin analysis is informing Ensemble" in page
+    page = client.get("/app").text
+    script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert 'id="skin-insight-banner"' not in page
+    assert "Your Style incorporates colour cues from your skin analysis alongside your selected palette" not in script
+    assert "Warm-leaning colour ideas" not in script
 
 
 def test_skin_analysis_automatically_sets_the_guided_palette():
@@ -772,7 +773,8 @@ def test_requested_ux_cleanup_and_no_unexplained_walkthrough(client):
     assert "sidebar-walkthrough" not in html
     assert 'data-view-panel="skin-analysis"' in html
     assert 'data-view="skin-analysis"' in html
-    assert 'data-view="skin-analysis">Review analysis</button>' in html
+    assert 'data-view="skin-analysis">Review analysis</button>' not in html
+    assert 'id="skin-insight-banner"' not in html
     assert 'data-scroll-to="skin-analysis-card"' not in html
     assert 'id="mystyle-hero"' not in html
     assert html.index('id="recommendation-grid"') < html.index('id="view-quiz"')
@@ -822,7 +824,7 @@ def test_ensemble_navigation_is_icon_free_and_new_search_replaces_previous_reque
     assert 'class="side-nav-link" data-view="skin-analysis" type="button">Skin analysis</button>' in html
     assert 'class="button button-outline skin-profile-link" data-view="discover" data-linked-tab="profile" type="button">Style profile <span aria-hidden="true">→</span></button>' in html
     assert "Colour suggestions are approximate styling inspiration, not rules." not in script
-    assert "Your Style incorporates colour cues from your skin analysis alongside your selected palette" in script
+    assert "Your Style incorporates colour cues from your skin analysis alongside your selected palette" not in script
     assert "Ensemble also considers colour cues from your skin analysis" not in script
     assert "state.recommendationsLoading" in script
     assert "aria-busy" in script
@@ -905,7 +907,7 @@ def test_all_button_families_share_authoritative_theme_aware_tokens():
     assert ".wardrobe-match-actions .button" in controls
     assert "--action-control-height: max(40px, calc(44px * var(--font-scale, 1)))" in controls
     assert 'input[type="file"]::file-selector-button' in controls
-    assert all("marketing-controls.css?v=20261024-skincare-integrated" in template.read_text(encoding="utf-8") for template in templates)
+    assert all("marketing-controls.css?v=20261024-closet-skincare-quiz" in template.read_text(encoding="utf-8") for template in templates)
 
 
 def test_button_design_uses_shared_theme_and_font_scale_tokens():
@@ -1100,3 +1102,67 @@ def test_skincare_recommendations_are_category_level_and_keep_sunscreen_included
     assert "broad spectrum SPF 30 facial sunscreen" in script
     assert "const tailored = products.filter(product => product.id !== 'daily-sunscreen').slice(0, 3);" in script
     assert "These cosmetic indicators are not a medical diagnosis" in script or "These results are not a medical diagnosis" in script
+
+
+def test_skincare_panel_only_shows_analysis_prompt_until_results_exist(client):
+    signed_in(client)
+    html = client.get("/app").text
+    script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert '<h2>Start with skin-health analysis</h2>' in html
+    assert 'id="skincare-status" aria-live="polite" hidden' in html
+    assert 'class="skincare-disclaimer"' not in html
+    assert "Suggestions are product categories, not medical advice or exact-SKU matches." not in html
+    assert "status.hidden = true;" in script
+    assert "empty.hidden = true;" in script
+    assert "Using your saved skin-health analysis" in script
+    assert "state.profile.skinHealthAnalysis" in script
+
+
+def test_skin_colour_insight_banner_is_removed_without_breaking_accessory_palette_matching(client):
+    signed_in(client)
+    html = client.get("/app").text
+    script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert 'id="skin-insight-banner"' not in html
+    assert "Your Style incorporates colour cues from your skin analysis alongside your selected palette" not in script
+    assert "function skinPaletteGuide(colors)" in script
+    assert "const guide = skinPaletteGuide(state.profile.skinAnalysis)" in script
+
+
+def test_my_closet_supports_skincare_items_and_keeps_them_out_of_outfit_matches(client):
+    signed_in(client)
+    html = client.get("/app").text
+    script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert '>My closet <span class="nav-count" id="wardrobe-count">' in html
+    assert '<h1>My closet</h1>' in html
+    assert '<option value="skincare">Skincare product</option>' in html
+    for category in ("Cleanser", "Moisturizer", "Serum", "Sunscreen", "Eye care", "Other skincare"):
+        assert f'value="{category}"' in html
+    assert 'data-wardrobe-filter="skincare"' in html
+    assert "['clothing', 'accessory', 'skincare'].includes(rawType)" in script
+    assert "if (wardrobe.item_type === 'skincare') return null;" in script
+    assert "if (item.item_type === 'skincare') return '';" in script
+    assert "Added to My closet." in script
+
+
+def test_style_quiz_reuses_saved_skin_information_and_updates_sensitivity(client):
+    signed_in(client)
+    html = client.get("/app").text
+    script = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert '<h2>Skin information</h2>' in html
+    assert 'id="quiz-skin-info"' in html
+    assert 'id="quiz-skincare-sensitivity"' in html
+    assert "function renderQuizSkinInfo()" in script
+    assert "const colours = state.profile.skinAnalysis || {};" in script
+    assert "const health = state.profile.skinHealthAnalysis || {};" in script
+    assert "sensitivity: $('#quiz-skincare-sensitivity')?.value || 'unknown'" in script
+    assert "renderQuizSkinInfo();" in script
+
+
+def test_my_closet_photo_picker_has_room_for_file_button_and_filename():
+    controls = (Path(__file__).resolve().parents[1] / "public" / "assets" / "marketing-controls.css").read_text(encoding="utf-8")
+    assert 'input[type="file"] {\n  display: block;' in controls
+    assert 'height: auto !important;' in controls
+    assert 'min-height: max(56px, calc(58px * var(--font-scale, 1)))' in controls
+    assert 'input[type="file"]::file-selector-button,' in controls
+    assert 'input[type="file"]::-webkit-file-upload-button' in controls
+    assert '#wardrobe-colours-field[hidden]' in controls

@@ -1,6 +1,6 @@
 # myStyle
 
-myStyle is a responsive personal-styling web app built with **FastAPI, Jinja2, and browser-side storage**. It combines seasonal clothing inspiration, a saved style profile, facial colour-tone analysis, optional skin-health analysis for skincare discovery, virtual try-on, shopping comparisons, and a private wardrobe catalogue.
+myStyle is a responsive personal-styling web app built with **FastAPI, Jinja2, and browser-side storage**. It combines seasonal clothing inspiration, a saved style profile, facial colour-tone analysis, optional skin-health analysis for skincare discovery, virtual try-on, shopping comparisons, and a private closet catalogue.
 
 ## Product overview
 
@@ -35,13 +35,13 @@ These are live search results, not exact-SKU product links. Price guides are ill
 
 ### Virtual try-on
 
-Virtual try-on is available from supported catalogue references and saved wardrobe items. It sends the user's photo and the selected reference to YouCam only after explicit consent and when the provider key is configured. Clothing uses YouCam's clothing workflow; supported accessories include bags, hats, scarves, and shoes. The selected photo can be retained locally for reuse until replaced or cleared. Provider access, task compatibility, account units, image framing, and service availability affect whether a try-on completes successfully.
+Virtual try-on is available from supported catalogue references and saved closet items. It sends the user's photo and the selected reference to YouCam only after explicit consent and when the provider key is configured. Clothing uses YouCam's clothing workflow; supported accessories include bags, hats, scarves, and shoes. The selected photo can be retained locally for reuse until replaced or cleared. Provider access, task compatibility, account units, image framing, and service availability affect whether a try-on completes successfully.
 
-### My wardrobe and saved pieces
+### My closet and saved pieces
 
-Users can save photos of their own clothes and accessories with a name, category, colours, season, and notes. Wardrobe images, saved pieces, profile preferences, display settings, and reusable skin-analysis/try-on photos are stored in **IndexedDB in the current browser**. They are not uploaded just by choosing a file or saving a wardrobe item, and they do not sync between browsers or devices. Wardrobe photos are only sent to YouCam when the user starts a virtual try-on with consent.
+The **My closet** section supports photos and details for clothing, accessories, and skincare products, including product category and routine notes. Users can filter the list by clothing, accessories or skincare. Closet items, saved pieces, profile preferences, display settings, and reusable skin-analysis/try-on photos are stored in **IndexedDB in the current browser**. They are not uploaded just by choosing a file or saving a closet item, and they do not sync between browsers or devices. Clothing and supported accessory photos are only sent to YouCam when the user starts a virtual try-on with consent. Skincare product photos remain local.
 
-The **From My wardrobe** section in Ensemble only appears when saved wardrobe items actually match the current recommendations. Photos are kept locally until the user removes them or clears the site's browser data.
+The **From My closet** section in Ensemble only appears when saved clothing or accessory items actually match the current recommendations. Skincare products stay in the closet and are not treated as outfit items. Photos are kept locally until the user removes them or clears the site's browser data.
 
 ### Skin analysis and skincare discovery
 
@@ -64,7 +64,7 @@ YouCam's processing and retention are governed by its own service terms.
 - Button colours, borders, hover states, and focus indicators adapt to light and dark themes. Dark mode uses plum/charcoal surfaces with coral/apricot accents.
 - Small, medium, and large text settings scale interface text and control dimensions. Theme and text-size preferences persist in the browser.
 - Layouts are responsive and include keyboard-focus styling and reduced-motion support.
-- A first-visit style quiz and an optional guided walkthrough help users get started.
+- The style quiz shows any existing facial colour notes and skin-health indicators, and lets users set their skin-sensitivity preference without repeating an analysis. It reuses saved results and can link back to Skin analysis when the user needs to update them. An optional guided walkthrough helps users get started.
 - After successful sign-out, the session is cleared and the app redirects to the public landing page (`/`).
 
 ## Technology
@@ -73,7 +73,7 @@ YouCam's processing and retention are governed by its own service terms.
 - FastAPI and Uvicorn
 - Jinja2 templates
 - Browser JavaScript and CSS
-- IndexedDB for browser-local profile, settings, photos, saved pieces, and wardrobe data
+- IndexedDB for browser-local profile, settings, photos, saved pieces, and closet items (clothing, accessories, and skincare products)
 - YouCam API for facial colour-tone analysis, Skin Analysis v2.1 skin-health metrics, and virtual try-on (optional; configured with a provider key and provider entitlement)
 - Curated Pexels photo references for outfit inspiration
 
@@ -158,6 +158,6 @@ node --check public/assets/app.js
 python -m compileall -q index.py mystyle scripts
 ```
 
-Automated tests cover authentication and CSRF, landing-page sign-out, recommendation and search filtering, seasonal and region-aware profile preferences, catalogue metadata, shopping links, separate skin-analysis consent, skin-health task creation and result sanitization, category-level skincare matching, retailer links, virtual try-on wiring, browser-local wardrobe integration, photo upload types, region dropdowns, dark/light theme behaviour, text-size controls, and the shared button system.
+Automated tests cover authentication and CSRF, landing-page sign-out, recommendation and search filtering, seasonal and region-aware profile preferences, catalogue metadata, shopping links, separate skin-analysis consent, skin-health task creation and result sanitization, category-level skincare matching, retailer links, virtual try-on wiring, browser-local closet integration, photo upload types, region dropdowns, dark/light theme behaviour, text-size controls, and the shared button system.
 
 The automated suite does not make live provider requests or guarantee that remote photo and shopping results will remain available. Use a network-enabled staging environment to test external photos and YouCam end-to-end before release.
