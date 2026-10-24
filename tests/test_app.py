@@ -1094,6 +1094,29 @@ def test_replacing_selfie_clears_old_colour_and_skin_health_results():
     assert "isCurrentSkinPhoto(photo, photoGeneration)" in script
 
 
+
+def test_skincare_reuses_legacy_and_wrapped_skin_health_results():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "function normalizeSkinHealthMetrics(value, depth = 0)" in script
+    assert "profile.skincareAnalysis, profile.skinHealthResults" in script
+    assert "profile.skin_health_analysis, profile.skinHealth, profile.skinAnalysis" in script
+    assert "const migratedHealth = getSavedSkinHealthMetricsFromProfile(state.profile);" in script
+    assert "state.profile.skinHealthAnalysis = migratedHealth;" in script
+    assert "normalizeSkinHealthMetrics(result.metrics || result)" in script
+
+
+def test_skincare_tab_reuses_existing_colour_analysis_instead_of_blocking_on_new_scan():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "function hasSavedColourAnalysis()" in script
+    assert "const hasColourResults = hasSavedColourAnalysis();" in script
+    assert "if (!hasHealthResults && !hasColourResults)" in script
+    assert "Using your saved profile and skincare preferences. Your existing colour analysis is retained" in script
+    assert "const products = skincareProductSuggestions(metrics || {}, preferences);" in script
+    assert "a skin-health scan can further tailor these suggestions." in script
+
+
 def test_skincare_recommendations_are_category_level_and_keep_sunscreen_included():
     root = Path(__file__).resolve().parents[1]
     script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
@@ -1153,7 +1176,7 @@ def test_style_quiz_reuses_saved_skin_information_and_updates_sensitivity(client
     assert 'id="quiz-skincare-sensitivity"' in html
     assert "function renderQuizSkinInfo()" in script
     assert "const colours = state.profile.skinAnalysis || {};" in script
-    assert "const health = state.profile.skinHealthAnalysis || {};" in script
+    assert "const health = getSavedSkinHealthMetrics() || {};" in script
     assert "sensitivity: $('#quiz-skincare-sensitivity')?.value || 'unknown'" in script
     assert "renderQuizSkinInfo();" in script
 

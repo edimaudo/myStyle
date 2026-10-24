@@ -93,6 +93,17 @@
       state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
       state.profile.skincarePreferences = { ...DEFAULT_PROFILE.skincarePreferences, ...(profileRow.value.skincarePreferences || {}) };
       const stored = profileRow.value;
+      // Backward compatibility: earlier builds and provider responses may store
+      // skin-health data under different keys or wrap it in `metrics`, `results`,
+      // or `data`. Normalize those saved results once so Ensemble reuses them.
+      const migratedHealth = getSavedSkinHealthMetricsFromProfile(state.profile);
+      if (migratedHealth && JSON.stringify(state.profile.skinHealthAnalysis) !== JSON.stringify(migratedHealth)) {
+        state.profile.skinHealthAnalysis = migratedHealth;
+        state.profile.skinHealthAnalysisUpdatedAt = state.profile.skinHealthAnalysisUpdatedAt
+          || state.profile.skincareAnalysisUpdatedAt || state.profile.skinHealthUpdatedAt
+          || state.profile.skinAnalysisUpdatedAt || null;
+        await persistProfile();
+      }
       if (state.profile.displayName === 'myStyle Member') {
         state.profile.displayName = 'James';
         await persistProfile();
@@ -312,7 +323,7 @@
     const target = $('#quiz-skin-info');
     if (!target) return;
     const colours = state.profile.skinAnalysis || {};
-    const health = state.profile.skinHealthAnalysis || {};
+    const health = getSavedSkinHealthMetrics() || {};
     const colourKeys = [
       ['skin_color', 'Skin'], ['hair_color', 'Hair'], ['eye_color', 'Eyes'],
       ['eyebrow_color', 'Brows'], ['lip_color', 'Lips']
@@ -989,9 +1000,53 @@
     return Object.values(value).flatMap(getNestedSkinWords);
   }
 
+  function normalizeSkinHealthMetrics(value, depth = 0) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 5) return null;
+    const metricKeys = ['skin_type', 'skinType', 'moisture', 'oiliness', 'redness', 'pore', 'pores', 'acne', 'radiance', 'texture', 'skin_age'];
+    if (metricKeys.some(key => Object.prototype.hasOwnProperty.call(value, key))) return value;
+    const wrappers = ['metrics', 'results', 'result', 'data', 'analysis', 'skinHealthAnalysis', 'skin_health_analysis', 'skinHealth', 'skin_health', 'skincareAnalysis', 'skinAnalysis'];
+    for (const key of wrappers) {
+      const nested = normalizeSkinHealthMetrics(value[key], depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  function getSavedSkinHealthMetricsFromProfile(profile = state.profile) {
+    if (!profile || typeof profile !== 'object') return null;
+    const candidates = [
+      profile.skinHealthAnalysis, profile.skincareAnalysis, profile.skinHealthResults,
+      profile.skin_health_analysis, profile.skinHealth, profile.skinAnalysis,
+      profile.analysis, profile.skinAnalysisResults
+    ];
+    for (const candidate of candidates) {
+      const metrics = normalizeSkinHealthMetrics(candidate);
+      if (metrics && Object.keys(metrics).length) return metrics;
+    }
+    return null;
+  }
+
+  function getSavedSkinHealthMetrics() {
+    return getSavedSkinHealthMetricsFromProfile(state.profile);
+  }
+
+  function hasSavedColourAnalysis() {
+    const colours = state.profile?.skinAnalysis;
+    return Boolean(colours && typeof colours === 'object' &&
+      ['skin_color', 'hair_color', 'eye_color', 'eyebrow_color', 'lip_color']
+        .some(key => /^#[0-9a-f]{6}$/i.test(String(colours[key] || ''))));
+  }
+
+  function hasAnySavedSkinAnalysis() {
+    const health = getSavedSkinHealthMetrics();
+    return Boolean((health && Object.keys(health).length) || hasSavedColourAnalysis());
+  }
+
   function skincareProductSuggestions(metrics, preferences = state.profile.skincarePreferences || {}) {
-    if (!metrics || typeof metrics !== 'object' || !Object.keys(metrics).length) return [];
-    const skinTypeText = getNestedSkinWords(metrics.skin_type).join(' ');
+    metrics = metrics && typeof metrics === 'object' ? metrics : {};
+    const hasHealthMetrics = ['skin_type', 'skinType', 'moisture', 'oiliness', 'redness', 'pore', 'pores', 'acne', 'radiance', 'texture', 'skin_age']
+      .some(key => Object.prototype.hasOwnProperty.call(metrics, key));
+    const skinTypeText = getNestedSkinWords(metrics.skin_type || metrics.skinType).join(' ');
     const moisture = getNestedSkinScore(metrics.moisture);
     const oiliness = getNestedSkinScore(metrics.oiliness);
     const redness = getNestedSkinScore(metrics.redness);
@@ -1018,8 +1073,8 @@
       products.push({ id, title, query: tailoredQuery, reason, category });
     };
 
-    if (dry || moisture === null) {
-      add('hydration', 'Hydration support', 'hydrating facial moisturizer', dry ? 'The skin-health result or your skin-type result suggests hydration is worth exploring.' : 'A basic moisturizing step is useful while building a simple routine.', 'Moisturizers');
+    if (dry || (hasHealthMetrics && moisture === null)) {
+      add('hydration', 'Hydration support', 'hydrating facial moisturizer', 'Your saved skin-health result suggests hydration is worth exploring.', 'Moisturizers');
     }
     if (sensitive) {
       add('gentle-care', 'Gentle, fragrance-free care', 'gentle fragrance free facial cleanser and moisturizer', 'The results or your sensitivity preference support starting with a gentle, fragrance-free routine.', 'Cleansers and moisturizers');
@@ -1062,8 +1117,10 @@
     const empty = $('#skincare-empty-state');
     const status = $('#skincare-status');
     if (!grid || !empty || !status) return;
-    const metrics = state.profile.skinHealthAnalysis;
-    if (!metrics || !Object.keys(metrics).length) {
+    const metrics = getSavedSkinHealthMetrics();
+    const hasHealthResults = Boolean(metrics && Object.keys(metrics).length);
+    const hasColourResults = hasSavedColourAnalysis();
+    if (!hasHealthResults && !hasColourResults) {
       status.textContent = '';
       status.hidden = true;
       grid.replaceChildren();
@@ -1072,8 +1129,11 @@
       return;
     }
     const preferences = state.profile.skincarePreferences || DEFAULT_PROFILE.skincarePreferences;
-    const products = skincareProductSuggestions(metrics, preferences);
-    status.textContent = `Using your saved skin-health analysis${state.profile.skinHealthAnalysisUpdatedAt ? ` · Updated ${new Date(state.profile.skinHealthAnalysisUpdatedAt).toLocaleString()}` : ''}.`;
+    const products = skincareProductSuggestions(metrics || {}, preferences);
+    const stamp = state.profile.skinHealthAnalysisUpdatedAt || state.profile.skincareAnalysisUpdatedAt || state.profile.skinHealthUpdatedAt;
+    status.textContent = hasHealthResults
+      ? `Using your saved skin-health analysis${stamp ? ` · Updated ${new Date(stamp).toLocaleString()}` : ''}.`
+      : 'Using your saved profile and skincare preferences. Your existing colour analysis is retained; a skin-health scan can further tailor these suggestions.';
     status.hidden = false;
     empty.hidden = true;
     grid.hidden = false;
@@ -1087,6 +1147,7 @@
     renderQuizSkinInfo();
     const target = $('#skin-health-analysis-preview');
     if (!target) { renderSkincareRecommendations(); return; }
+    metrics = normalizeSkinHealthMetrics(metrics) || getSavedSkinHealthMetrics();
     if (!metrics || !Object.keys(metrics).length) {
       target.innerHTML = '<div class="skin-empty-state"><strong>No skin-health results yet</strong><p>Run skin-health analysis to see cosmetic indicators and personalized product-category suggestions.</p></div>';
       renderSkincareRecommendations();
@@ -1173,7 +1234,7 @@
       const result = await pollSkincareTask(task.task_id);
       if (!isCurrentSkinPhoto(photo, photoGeneration)) throw new Error('The selfie changed while analysis was running. The result was discarded; run skin-health analysis again for the current photo.');
       if (result.status === 'error') throw new Error(result.message || 'Skin-health analysis could not be completed.');
-      const metrics = result.metrics || {};
+      const metrics = normalizeSkinHealthMetrics(result.metrics || result) || {};
       if (!Object.keys(metrics).length) throw new Error('YouCam completed the task but did not return recognizable skin-health scores. Check that Skin Analysis v2.1 is enabled for your account.');
       state.profile.skinHealthAnalysis = metrics;
       state.profile.skinHealthAnalysisUpdatedAt = new Date().toISOString();
