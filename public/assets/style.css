@@ -1073,3 +1073,47 @@ h1, h2, h3, h4, .brand, .style-card h3, .mystyle-hero h1, .mystyle-landing-hero 
   .skin-analysis-result-panel { padding: 14px; }
   .skin-analysis-result-panel .skin-health-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+
+/* Compact, structured guidance and persistent, prominent skin-analysis errors. */
+.photo-guidance {
+  margin: 10px 0 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.photo-guidance > strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: .76rem; }
+.photo-guidance-list { display: grid; gap: 5px; margin: 0; padding-left: 17px; color: var(--ink-soft); font-size: .70rem; line-height: 1.45; }
+.photo-guidance-list li { padding-left: 2px; }
+.photo-guidance-list b { color: var(--ink); font-weight: 650; }
+.skin-analysis-run-status[hidden] { display: none !important; }
+.skin-analysis-run-status {
+  max-width: 100%;
+  margin-top: 13px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--ink-soft);
+  font-size: .84rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.skin-analysis-run-status.is-error {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 11%, var(--surface));
+  color: var(--bad);
+  font-weight: 650;
+}
+.skin-analysis-run-status.is-success {
+  border-color: var(--good);
+  background: color-mix(in srgb, var(--good) 8%, var(--surface));
+  color: var(--good);
+}
+.skin-analysis-run-status.is-loading { border-left-color: var(--blue); }
+@media (max-width: 560px) {
+  .photo-guidance-list { font-size: .72rem; }
+  .skin-analysis-run-status { font-size: .82rem; }
+}

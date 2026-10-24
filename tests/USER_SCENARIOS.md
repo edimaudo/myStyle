@@ -40,17 +40,17 @@
 4. Confirm the card disappears from the refreshed edit and remains excluded in later requests.
 5. Use Reset hidden feedback if the edit becomes empty.
 
-## Skin colour analysis
+## Combined skin analysis
 
 1. Open Skin analysis from the sidebar directly below Ensemble.
-2. Select a front-facing JPG/PNG selfie.
-3. Confirm the selfie preview is only local.
-4. Check the consent box and run analysis.
-5. With a valid `YCE_API_KEY`, verify the server uploads the photo to YouCam, creates a skin-tone-analysis task, polls it and returns detected colour values.
-6. Confirm skin/hair/eye/brow/lip colour swatches render, the active palette switches to the skin-analysis-guided option, and recommendations refresh.
-7. Return to Ensemble and confirm the visible skin-analysis summary appears above the recommendations and recommendation reasons identify skin-colour matches where relevant.
-8. Confirm returned colour values and the reusable selfie are stored in IndexedDB, and the selfie is not uploaded again without separate consent.
-9. Without `YCE_API_KEY`, confirm the user sees a clear configuration message and there is no mock success result.
+2. Select one front-facing JPG, JPEG or PNG selfie. Confirm the preview remains local before analysis begins.
+3. Confirm the photo requirements specify that the face must be centred, fully visible, front-facing, and occupy more than 60% of image width.
+4. Select an image with a small face and run analysis. Confirm the error is shown in a persistent highlighted inline panel, explains that the face is too small, and instructs the user to crop closer or retake the photo. Confirm it does not blame image resolution when the pixel dimensions are valid.
+5. Select a close-cropped selfie, check the single consent box, and run **Analyze my skin**.
+6. With a valid `YCE_API_KEY` and access to both YouCam features, verify the server uploads the photo once, creates colour-tone and skin-health tasks against the same uploaded image, polls both tasks and returns results.
+7. Confirm the colour swatches and skin-health metrics render side by side, the active palette can use detected colour cues, and recommendations refresh.
+8. Return to Ensemble and verify existing saved results are reused. A new scan should not be required unless the selfie is replaced or the user chooses to update the analysis.
+9. Without `YCE_API_KEY`, confirm the user sees a clear configuration message and no mock success result.
 
 ## Limitations to verify in staging
 
@@ -61,7 +61,7 @@
 
 ## Skincare recommendations and saved results
 
-1. Run Facial colour-tone analysis and Skin-health analysis separately, using the same selected selfie and checking the separate consent each time.
+1. Run combined Skin analysis once; confirm the same selected selfie and the single consent start both facial colour-tone and skin-health analysis tasks.
 2. Open Ensemble Style → Skincare. Before a skin-health result exists, confirm only the “Start with skin-health analysis” prompt is shown in the panel.
 3. After a successful skin-health task, return to Ensemble Style → Skincare and verify the stored metrics drive skincare category suggestions without running analysis again.
 4. Change skin sensitivity and budget. Confirm the existing recommendations update using the saved analysis and preferences.

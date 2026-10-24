@@ -1243,6 +1243,7 @@
   async function setSkinPhotoPreview() {
     const file = $('#skin-photo')?.files?.[0];
     if (!file) return;
+    setSkinAnalysisStatus('', 'info');
     const pending = (async () => {
       if (!supportedPhotoMimeType(file)) throw new Error('Choose a JPG, JPEG or PNG photo.');
       if (!file.size || file.size > 9_500_000) throw new Error('Choose a non-empty photo smaller than 9.5 MB.');
@@ -1260,7 +1261,7 @@
     try {
       await pending;
     } catch (error) {
-      showAlert(error.message, 'error');
+      reportSkinAnalysisError(error.message);
       $('#skin-photo').value = '';
     } finally {
       if (state.skinPhotoChangePromise === pending) state.skinPhotoChangePromise = null;
@@ -1323,6 +1324,39 @@
     state.profile.colorScheme = 'selfie';
   }
 
+  function setSkinAnalysisStatus(message, type = 'info') {
+    const status = $('#skin-analysis-run-status');
+    if (!status) return;
+    status.textContent = String(message || '');
+    status.hidden = !message;
+    status.className = `skin-analysis-run-status${type === 'error' ? ' is-error' : type === 'success' ? ' is-success' : type === 'loading' ? ' is-loading' : ''}`;
+    status.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    status.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    if (type === 'error') {
+      status.focus({ preventScroll: true });
+      status.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function formatSkinAnalysisError(message, dimensions = null) {
+    const raw = String(message || 'The combined skin analysis could not be completed.');
+    const flattened = raw.replace(/Facial colour tones:\s*/gi, '').replace(/Skin health:\s*/gi, '');
+    const faceIsTooSmall = /face.{0,120}(too small|60%|small enough)|(?:too small|60%).{0,120}face/i.test(flattened);
+    if (faceIsTooSmall) {
+      const sizeNote = dimensions?.width && dimensions?.height
+        ? `Your image is ${dimensions.width.toLocaleString()} × ${dimensions.height.toLocaleString()} px, which meets the pixel-size rules, but the face itself is too small in the frame. `
+        : 'The image may meet the pixel-size rules, but the face itself is too small in the frame. ';
+      return `${sizeNote}YouCam requires the face to occupy more than 60% of the image width. Move closer to the camera or crop in from the sides, keeping your full face centred and visible, then select the updated photo and try again.`;
+    }
+    return raw;
+  }
+
+  function reportSkinAnalysisError(message, dimensions = null) {
+    const friendly = formatSkinAnalysisError(message, dimensions);
+    setSkinAnalysisStatus(friendly, 'error');
+    showAlert(friendly, 'error');
+  }
+
   async function runCombinedSkinAnalysis() {
     if (state.skinPhotoChangePromise) {
       try { await state.skinPhotoChangePromise; } catch (_) { return; }
@@ -1330,38 +1364,38 @@
     const selectedPhoto = $('#skin-photo')?.files?.[0];
     const photo = selectedPhoto || state.cachedImages.skinAnalysis;
     const photoGeneration = state.skinPhotoGeneration;
-    const status = $('#skin-analysis-run-status');
-    if (!photo) { showAlert('Choose a front-facing JPG, JPEG or PNG selfie first.', 'error'); return; }
-    if (!$('#skin-analysis-consent')?.checked) { showAlert('Consent is required before sending your selfie for both analyses.', 'error'); return; }
-    if (!state.config.youcam_configured) { showAlert('YouCam is not configured for this deployment. Your selfie has not been uploaded.', 'error'); return; }
+    setSkinAnalysisStatus('', 'info');
+    if (!photo) { reportSkinAnalysisError('Choose a front-facing JPG, JPEG or PNG selfie first.'); return; }
+    if (!$('#skin-analysis-consent')?.checked) { reportSkinAnalysisError('Consent is required before sending your selfie for both analyses.'); return; }
+    if (!state.config.youcam_configured) { reportSkinAnalysisError('YouCam is not configured for this deployment. Your selfie has not been uploaded.'); return; }
     const photoMimeType = supportedPhotoMimeType(photo);
-    if (!photoMimeType) { showAlert('Use a JPG, JPEG or PNG selfie.', 'error'); return; }
-    if (!photo.size || photo.size > 9_500_000) { showAlert('Choose a non-empty image smaller than 9.5 MB.', 'error'); return; }
-    let dimensions;
+    if (!photoMimeType) { reportSkinAnalysisError('Use a JPG, JPEG or PNG selfie.'); return; }
+    if (!photo.size || photo.size > 9_500_000) { reportSkinAnalysisError('Choose a non-empty image smaller than 9.5 MB.'); return; }
+    let dimensions = null;
     try { dimensions = await getImageDimensions(photo); }
-    catch (error) { showAlert(error.message, 'error'); return; }
+    catch (error) { reportSkinAnalysisError(error.message); return; }
     if (Math.min(dimensions.width, dimensions.height) < 480) {
-      showAlert('For both skin analyses, the shorter side must be at least 480 pixels. A 720 × 1,080 pixel photo works well.', 'error'); return;
+      reportSkinAnalysisError('Both sides of the image must be at least 480 pixels. Around 720 × 1,080 pixels works well.', dimensions); return;
     }
     if (Math.max(dimensions.width, dimensions.height) > 4096) {
-      showAlert('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', 'error'); return;
+      reportSkinAnalysisError('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', dimensions); return;
     }
     if (!isCurrentSkinPhoto(photo, photoGeneration)) {
-      showAlert('The selected selfie changed during validation. Please start the combined analysis again for the current photo.', 'error'); return;
+      reportSkinAnalysisError('The selected selfie changed during validation. Please start the combined analysis again for the current photo.', dimensions); return;
     }
     if (selectedPhoto) {
       try { await rememberPhoto('skinAnalysis', selectedPhoto); }
-      catch (error) { showAlert(error.message, 'error'); return; }
+      catch (error) { reportSkinAnalysisError(error.message, dimensions); return; }
     }
     state.profile.skincarePreferences = readSkincarePreferencesFromUI();
     try { await persistProfile(); }
-    catch (error) { showAlert(`Could not save skincare preferences: ${error.message}`, 'error'); return; }
+    catch (error) { reportSkinAnalysisError(`Could not save skincare preferences: ${error.message}`, dimensions); return; }
 
     const button = $('#run-combined-skin-analysis');
     if (!button || button.disabled) return;
     button.disabled = true;
     button.textContent = 'Analyzing…';
-    if (status) status.textContent = 'Analyzing facial colour tones and skin health from the same selfie…';
+    setSkinAnalysisStatus('Analyzing facial colour tones and skin health from the same selfie…', 'loading');
     try {
       const form = new FormData();
       form.append('photo', normalizedPhotoBlob(photo), photo.name || `mystyle-selfie.${photoMimeType === 'image/png' ? 'png' : 'jpg'}`);
@@ -1417,16 +1451,14 @@
       if (colourCompleted) await requestRecommendations(state.lastQuery);
 
       if (colourCompleted && healthCompleted) {
-        if (status) status.textContent = 'Both analyses are saved. Ensemble Style and Skincare now use the updated results.';
+        setSkinAnalysisStatus('Both analyses are saved. Ensemble Style and Skincare now use the updated results.', 'success');
         showAlert('Both analyses are complete. Your colour notes and skin-health results have been saved.', 'good');
       } else {
         const message = `Partial results saved. ${issues.join(' ')}`;
-        if (status) status.textContent = message;
-        showAlert(message, 'error');
+        reportSkinAnalysisError(message, dimensions);
       }
     } catch (error) {
-      if (status) status.textContent = error.message || 'The combined analysis could not be completed.';
-      showAlert(error.message || 'YouCam could not complete the combined analysis.', 'error');
+      reportSkinAnalysisError(error.message || 'YouCam could not complete the combined analysis.', dimensions);
     } finally {
       button.disabled = false;
       button.innerHTML = 'Analyze my skin <span aria-hidden="true">→</span>';

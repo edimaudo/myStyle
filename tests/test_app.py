@@ -674,7 +674,12 @@ def test_app_ui_uses_one_selfie_and_one_consent_for_combined_skin_analyses(clien
     response = client.get("/app")
     html = response.text
     assert "Facial colour tones" in html
-    assert "One selfie for colour and skin-health insights." in html
+    assert "One selfie powers both analyses." in html
+    assert "Choose a clear, front-facing selfie. One consent starts both analyses." not in html
+    assert "It stays in this browser unless you replace it." not in html
+    assert "These preferences also guide skincare suggestions in Ensemble Style." not in html
+    assert "more than 60% of the image width" in html
+    assert 'id="skin-analysis-run-status" class="skin-analysis-run-status" role="alert"' in html
     assert "try-on-dialog" in html
     assert "Skin analysis" in html
     assert html.count('id="skin-photo"') == 1
@@ -691,6 +696,16 @@ def test_app_ui_uses_one_selfie_and_one_consent_for_combined_skin_analyses(clien
     assert "/api/tasks/color/" in script
     assert "/api/tasks/skincare/" in script
 
+
+
+def test_combined_skin_analysis_explains_small_face_errors_and_highlights_them():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "function formatSkinAnalysisError(message, dimensions = null)" in script
+    assert "more than 60% of the image width" in (root / "mystyle" / "templates" / "app.html").read_text(encoding="utf-8")
+    assert "YouCam requires the face to occupy more than 60% of the image width." in script
+    assert "status.scrollIntoView({ behavior: 'smooth', block: 'center' })" in script
+    assert "setSkinAnalysisStatus(friendly, 'error')" in script
 
 def test_app_ui_has_style_quiz_custom_palette_and_saved_feedback(client):
     signed_in(client)
@@ -774,11 +789,13 @@ def test_requested_ux_cleanup_and_no_unexplained_walkthrough(client):
     assert 'class="brand-mark' not in html
     assert "How Ensemble works" not in html
     assert "✳" not in html and "◈" not in client.get("/").text
-    assert "Choosing a good photo" in html
+    assert "Photo requirements" in html
     assert "Photo size and framing" not in html
     assert "face centred" in html
     assert "4,096 pixels" in html
     assert "720 × 1,080 pixels" in html
+    assert "Photo requirements" in html
+    assert ".skin-analysis-run-status.is-error" in (Path(__file__).resolve().parents[1] / "public" / "assets" / "style.css").read_text(encoding="utf-8")
     assert "sidebar-walkthrough" not in html
     assert 'data-view-panel="skin-analysis"' in html
     assert 'data-view="skin-analysis"' in html

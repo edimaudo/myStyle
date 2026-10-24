@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/assets/style.css?v=20261024-combined-skin-analysis">
+  <link rel="stylesheet" href="/assets/style.css?v=20261024-skin-error-guidance">
   <link rel="stylesheet" href="/assets/marketing-controls.css?v=20261024-combined-skin-analysis">
-  <script defer src="/assets/app.js?v=20261024-closet-skincare-quiz"></script>
+  <script defer src="/assets/app.js?v=20261024-skin-error-guidance"></script>
 </head>
 <body class="app-body mystyle-body">
   <a class="skip-link" href="#main">Skip to content</a>
@@ -118,28 +118,27 @@
       </section>
 
       <section class="app-view" id="view-skin-analysis" data-view-panel="skin-analysis" hidden>
-        <div class="welcome-row"><div><h1>Skin analysis</h1><p class="page-lede">One selfie for colour and skin-health insights. It stays in this browser unless you replace it.</p></div><button class="button button-outline skin-profile-link" data-view="discover" data-linked-tab="profile" type="button">Style profile <span aria-hidden="true">→</span></button></div>
+        <div class="welcome-row"><div><h1>Skin analysis</h1><p class="page-lede">One selfie powers both analyses.</p></div><button class="button button-outline skin-profile-link" data-view="discover" data-linked-tab="profile" type="button">Style profile <span aria-hidden="true">→</span></button></div>
         <section class="profile-card skin-analysis-card" id="skin-analysis-card">
-          <div class="profile-card-heading"><div><h2>One selfie, two insights</h2><p>Choose a clear, front-facing selfie. One consent starts both analyses.</p></div></div>
+          <div class="profile-card-heading"><div><h2>One selfie, two insights</h2></div></div>
           <div class="skin-analysis-controls">
             <div class="skin-analysis-input-grid">
               <div class="skin-photo-input-column">
                 <label class="upload-label" for="skin-photo">Choose a front-facing selfie (JPG, JPEG or PNG)</label>
                 <input id="skin-photo" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/jpg,image/png" aria-describedby="skin-photo-help">
                 <div id="skin-photo-memory" class="stored-photo-preview" aria-live="polite"></div>
-                <div class="photo-guidance" id="skin-photo-help"><strong>Choosing a good photo</strong><p>Use a clear selfie or head-and-shoulders photo:</p><ul><li>Face the camera, with one person only and the whole face centred.</li><li>Use soft, even daylight without filters or coloured lighting.</li><li>Use JPG, JPEG or PNG under 9.5 MB. The shorter side must be at least 480 pixels, and the longest side must not exceed 4,096 pixels.</li></ul><p>Around 720 × 1,080 pixels works well. Larger photos are resized automatically where supported.</p></div>
+                <div class="photo-guidance" id="skin-photo-help"><strong>Photo requirements</strong><ul class="photo-guidance-list"><li><b>Framing:</b> One person, face centred, fully visible and facing forward. Your face must fill <b>more than 60% of the image width</b>; move closer or crop in from the sides.</li><li><b>Lighting:</b> Use soft, even daylight. Avoid filters and coloured lighting.</li><li><b>File:</b> JPG, JPEG or PNG, under 9.5 MB.</li><li><b>Size:</b> Both sides at least 480 px; longest side no more than 4,096 pixels. Around 720 × 1,080 pixels works well. Larger photos are resized where supported.</li></ul></div>
               </div>
               <div class="skin-analysis-preference-column">
                 <div class="skincare-preferences-grid">
                   <div class="form-field"><label for="skincare-sensitivity">Skin sensitivity</label><select id="skincare-sensitivity"><option value="unknown">Not sure yet</option><option value="sensitive">Sensitive or reactive</option><option value="not-sensitive">Not typically sensitive</option></select></div>
                   <div class="form-field"><label for="skincare-budget">Budget per product</label><select id="skincare-budget"><option value="any">No set budget</option><option value="under25">Under CA$25</option><option value="25to50">CA$25–50</option><option value="50to100">CA$50–100</option><option value="over100">Over CA$100</option></select></div>
                 </div>
-                <p class="small-note">These preferences also guide skincare suggestions in Ensemble Style.</p>
               </div>
             </div>
             <label class="consent-line skin-consent"><input id="skin-analysis-consent" type="checkbox"><span>I consent to sending this selfie to YouCam for both facial colour-tone and skin-health analysis. <span class="required-marker" aria-hidden="true">*</span><span class="sr-only">Required for both analyses</span></span></label>
             <button class="button button-primary" id="run-combined-skin-analysis" type="button">Analyze my skin <span aria-hidden="true">→</span></button>
-            <p id="skin-analysis-run-status" class="small-note" role="status" aria-live="polite"></p>
+            <div id="skin-analysis-run-status" class="skin-analysis-run-status" role="alert" aria-live="assertive" tabindex="-1" hidden></div>
           </div>
           <div class="skin-analysis-results-grid">
             <section class="skin-analysis-result-panel" aria-labelledby="skin-colour-results-title"><div class="skin-analysis-result-heading"><h2 id="skin-colour-results-title">Facial colour tones</h2><p>Used for clothing palettes and accessories.</p></div><div id="skin-analysis-preview" class="skin-analysis-preview" aria-live="polite"><div class="skin-empty-state"><strong>Your colour notes will appear here</strong><p>Analyze your selfie to see detected colour cues.</p></div></div></section>
