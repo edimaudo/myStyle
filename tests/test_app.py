@@ -706,6 +706,8 @@ def test_combined_skin_analysis_explains_small_face_errors_and_highlights_them()
     assert "YouCam requires the face to occupy more than 60% of the image width." in script
     assert "status.scrollIntoView({ behavior: 'smooth', block: 'center' })" in script
     assert "setSkinAnalysisStatus(friendly, 'error')" in script
+    assert "const unsupportedImageType = /unsupported image type|unsupported file type|unsupported image format|invalid image type/i.test(flattened);" in script
+    assert "myStyle now converts the selfie to a standard JPG before sending it to both analyses." in script
 
 def test_app_ui_has_style_quiz_custom_palette_and_saved_feedback(client):
     signed_in(client)
@@ -884,8 +886,21 @@ def test_photo_upload_accepts_jpg_jpeg_and_png_across_every_photo_input(client):
     source = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
     assert "function supportedPhotoMimeType(file)" in source
     assert "jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png'" in source
-    assert "normalizedPhotoBlob(photo)" in source
+    assert "function normalizedPhotoBlob(file)" in source
+    assert "async function encodePhotoAsJpeg(file)" in source
+    assert "canvas.toBlob(result => result ? resolve(result)" in source
+    assert "form.append('photo', analysisJpeg, 'mystyle-selfie.jpg')" in source
+    assert "Preparing your selfie in a consistent format…" in source
     assert "Use a JPG, JPEG or PNG photo." in source
+
+
+def test_combined_skin_analysis_reencodes_images_to_real_jpeg_bytes_before_upload():
+    source = (Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "async function encodePhotoAsJpeg(file)" in source
+    assert "canvas.toBlob(result => result ? resolve(result) : reject" in source
+    assert "'image/jpeg', quality" in source
+    assert "form.append('photo', analysisJpeg, 'mystyle-selfie.jpg')" in source
+    assert "The two YouCam analysis endpoints can handle uploaded formats differently." in source
 
 
 def test_photo_mime_resolution_accepts_mime_and_extension_variants():

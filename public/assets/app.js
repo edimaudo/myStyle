@@ -163,6 +163,45 @@
     return file.slice(0, file.size, mimeType);
   }
 
+  // The two YouCam analysis endpoints can handle uploaded formats differently.
+  // Re-encode the selected image as real JPEG bytes (not just a changed MIME label)
+  // so the shared file is consistently accepted by both tasks.
+  async function encodePhotoAsJpeg(file) {
+    const supportedType = supportedPhotoMimeType(file);
+    if (!supportedType) throw new Error('Choose a JPG, JPEG or PNG image.');
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const element = new Image();
+        element.onload = () => resolve(element);
+        element.onerror = () => reject(new Error('This selfie could not be decoded. Save it as a standard JPG or PNG and try again.'));
+        element.src = objectUrl;
+      });
+      const maxSide = 4096;
+      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d', { alpha: false });
+      if (!context) throw new Error('Your browser could not prepare the selfie. Try another browser or save the image as a JPG.');
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+
+      for (const quality of [0.94, 0.9, 0.86, 0.82, 0.78, 0.72]) {
+        const blob = await new Promise((resolve, reject) => {
+          canvas.toBlob(result => result ? resolve(result) : reject(new Error('Your browser could not convert the selfie to JPEG. Try saving it as a JPG and upload it again.')), 'image/jpeg', quality);
+        });
+        if (blob.type === 'image/jpeg' && blob.size > 0 && blob.size <= 9_500_000) return blob;
+      }
+      throw new Error('The selfie is still too large after preparing it for analysis. Choose a smaller image under 9.5 MB.');
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
   async function rememberPhoto(key, file) {
     const mimeType = supportedPhotoMimeType(file);
     if (!mimeType) throw new Error('Choose a JPG, JPEG or PNG image.');
@@ -1342,6 +1381,10 @@
     const raw = String(message || 'The combined skin analysis could not be completed.');
     const flattened = raw.replace(/Facial colour tones:\s*/gi, '').replace(/Skin health:\s*/gi, '');
     const faceIsTooSmall = /face.{0,120}(too small|60%|small enough)|(?:too small|60%).{0,120}face/i.test(flattened);
+    const unsupportedImageType = /unsupported image type|unsupported file type|unsupported image format|invalid image type/i.test(flattened);
+    if (unsupportedImageType) {
+      return 'YouCam rejected the photo format for facial colour-tone analysis. myStyle now converts the selfie to a standard JPG before sending it to both analyses. Please try again; if this message continues, check that your YouCam account supports the colour-tone endpoint and contact Perfect Corp. support with the task error.';
+    }
     if (faceIsTooSmall) {
       const sizeNote = dimensions?.width && dimensions?.height
         ? `Your image is ${dimensions.width.toLocaleString()} × ${dimensions.height.toLocaleString()} px, which meets the pixel-size rules, but the face itself is too small in the frame. `
@@ -1397,9 +1440,12 @@
     button.textContent = 'Analyzing…';
     setSkinAnalysisStatus('Analyzing facial colour tones and skin health from the same selfie…', 'loading');
     try {
+      setSkinAnalysisStatus('Preparing your selfie in a consistent format…', 'loading');
+      const analysisJpeg = await encodePhotoAsJpeg(photo);
       const form = new FormData();
-      form.append('photo', normalizedPhotoBlob(photo), photo.name || `mystyle-selfie.${photoMimeType === 'image/png' ? 'png' : 'jpg'}`);
+      form.append('photo', analysisJpeg, 'mystyle-selfie.jpg');
       form.append('consent', 'true');
+      setSkinAnalysisStatus('Analyzing facial colour tones and skin health from the same selfie…', 'loading');
       const tasks = await apiFetch('/api/skin-analysis', { method: 'POST', body: form });
       const [colourResult, healthResult] = await Promise.all([
         tasks.color_task_id
