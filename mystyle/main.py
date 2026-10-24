@@ -193,6 +193,92 @@ async def create_yce_color_task(file_id: str) -> dict[str, Any]:
             raise HTTPException(status_code=502, detail="YouCam returned an unexpected task response.") from exc
 
 
+SKIN_HEALTH_ACTIONS = ["skin_type", "moisture", "oiliness", "redness", "pore", "acne", "radiance", "texture"]
+SKIN_HEALTH_METRIC_KEYS = set(SKIN_HEALTH_ACTIONS) | {"all", "skin_age"}
+SKIN_HEALTH_VALUE_KEYS = {
+    "raw_score", "ui_score", "score", "whole", "t_zone", "u_zone", "t-zone", "u-zone",
+    "forehead", "nose", "cheek", "crowfeet", "periocular", "glabellar", "nasolabial", "marionette",
+    "skin_type", "type", "value", "label", "result", "status",
+}
+
+
+async def create_yce_skin_health_task(file_id: str) -> dict[str, Any]:
+    """Start the separate YouCam v2.1 skin-health task (all requested features are SD)."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            f"{YCE_BASE}/s2s/v2.1/task/skin-analysis",
+            headers=yce_headers(),
+            json={"src_file_id": file_id, "dst_actions": SKIN_HEALTH_ACTIONS, "format": "json"},
+        )
+        if response.is_error:
+            logger.warning("YouCam skin-health task creation failed: %s", response.status_code)
+            detail = "YouCam could not start skin-health analysis. Check that your API account has access to Skin Analysis v2.1 and has remaining units."
+            if response.status_code == 401:
+                detail = "YouCam rejected the API key. Check YCE_API_KEY."
+            elif response.status_code == 403:
+                detail = "Your YouCam account may not have Skin Analysis v2.1 enabled. Check your API plan and feature access."
+            elif response.status_code == 429:
+                detail = "YouCam rate or unit limit reached. Check your account and try again later."
+            raise HTTPException(status_code=502, detail=detail)
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail="YouCam returned an unexpected skin-health task response.") from exc
+
+
+def _sanitize_skin_metric(value: Any, depth: int = 0) -> Any:
+    """Keep only small score/type fields from provider results; never return image URLs or masks."""
+    if depth > 5:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value if abs(float(value)) < 10000 else None
+    if isinstance(value, str):
+        clean = value.strip()
+        return clean[:80] if clean and len(clean) <= 80 else None
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, child in value.items():
+            normalized = str(key).strip().lower()
+            if normalized in SKIN_HEALTH_VALUE_KEYS:
+                safe_child = _sanitize_skin_metric(child, depth + 1)
+                if safe_child is not None:
+                    cleaned[normalized] = safe_child
+            elif normalized in {"tzone", "uzone", "whole_face"}:
+                safe_child = _sanitize_skin_metric(child, depth + 1)
+                if safe_child is not None:
+                    cleaned["t_zone" if normalized == "tzone" else "u_zone" if normalized == "uzone" else "whole"] = safe_child
+        return cleaned or None
+    if isinstance(value, list):
+        return [safe for item in value[:10] if (safe := _sanitize_skin_metric(item, depth + 1)) is not None]
+    return None
+
+
+def find_skin_health_payload(payload: Any) -> dict[str, Any]:
+    """Extract score metrics from common v2.1 JSON response envelopes."""
+    if isinstance(payload, dict):
+        metrics: dict[str, Any] = {}
+        for key, value in payload.items():
+            normalized = str(key).strip().lower()
+            if normalized in SKIN_HEALTH_METRIC_KEYS:
+                cleaned = _sanitize_skin_metric(value)
+                if cleaned is not None:
+                    metrics[normalized] = cleaned
+        if metrics:
+            return metrics
+        for value in payload.values():
+            found = find_skin_health_payload(value)
+            if found:
+                return found
+    elif isinstance(payload, list):
+        for value in payload[:30]:
+            found = find_skin_health_payload(value)
+            if found:
+                return found
+    return {}
+
+
 def _normalise_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").casefold()).strip()
 
@@ -707,6 +793,29 @@ async def color_analysis(request: Request, photo: UploadFile = File(...), consen
     return {"task_id": task_id, "task_kind": "color", "message": "YouCam is analyzing detected facial colour tones."}
 
 
+@app.post("/api/skincare-analysis")
+async def skincare_analysis(request: Request, photo: UploadFile = File(...), consent: bool = Form(...)):
+    """Start consented YouCam Skin Analysis v2.1 for cosmetic skin-health indicators."""
+    require_session(request)
+    if not consent:
+        raise HTTPException(status_code=400, detail="Consent is required before sending your selfie to YouCam for skin-health analysis.")
+    photo_bytes = await photo.read(MAX_UPLOAD_BYTES + 1)
+    if not photo_bytes or len(photo_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Choose a non-empty selfie smaller than 9.5 MB.")
+    content_type = resolve_photo_content_type(photo.filename, photo.content_type, label="selfie")
+    file_id = await upload_image_to_yce(photo_bytes, photo.filename or "mystyle-skincare-analysis.jpg", content_type)
+    payload = await create_yce_skin_health_task(file_id)
+    try:
+        task_id = payload["data"]["task_id"]
+    except (KeyError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail="YouCam did not return a skin-health analysis task ID.") from exc
+    return {
+        "task_id": str(task_id),
+        "task_kind": "skincare",
+        "message": "YouCam is analyzing cosmetic skin-health indicators.",
+    }
+
+
 @app.post("/api/try-on")
 async def try_on(
     request: Request,
@@ -844,4 +953,32 @@ async def task_status(task_id: str, request: Request):
     elif status == "success":
         result["colors"] = find_color_payload(payload) or {}
         result["message"] = "Skin colour analysis completed. The detected colours can inform styling suggestions, not determine what you can wear."
+    return result
+
+
+@app.get("/api/tasks/skincare/{task_id:path}")
+async def skincare_task_status(task_id: str, request: Request):
+    require_session(request)
+    if not task_id or len(task_id) > 512 or ".." in task_id:
+        raise HTTPException(status_code=400, detail="Invalid task ID.")
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        response = await client.get(f"{YCE_BASE}/s2s/v2.1/task/skin-analysis/{task_id}", headers=yce_headers())
+        if response.is_error:
+            logger.warning("YouCam skin-health status lookup failed: %s", response.status_code)
+            detail = "Could not retrieve the YouCam skin-health results. Retry in a moment."
+            if response.status_code == 403:
+                detail = "Your YouCam account may not have access to Skin Analysis v2.1. Check your API plan and feature access."
+            raise HTTPException(status_code=502, detail=detail)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail="YouCam returned an unexpected skin-health status response.") from exc
+    status = extract_task_status(payload)
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    result: dict[str, Any] = {"status": status, "task_kind": "skincare"}
+    if status == "error":
+        result["message"] = data.get("error_message") or payload.get("error_message") or "Skin-health analysis could not be completed. Try a clear, evenly lit front-facing selfie."
+    elif status == "success":
+        result["metrics"] = find_skin_health_payload(payload)
+        result["message"] = "Skin-health analysis completed. These cosmetic indicators can inform product discovery; they are not a medical diagnosis."
     return result

@@ -10,7 +10,8 @@
     season: 'auto', climate: 'variable', budget: 100, fitPreference: 'balanced',
     sizeTop: '', sizeBottom: '', sizeShoe: '', notes: '',
     styleTags: ['classic', 'casual'], occasions: ['everyday', 'work'],
-    colorScheme: 'earth', customColors: '', colorPreferences: [], skinAnalysis: null, skinAnalysisApplied: false,
+    colorScheme: 'earth', customColors: '', colorPreferences: [], skinAnalysis: null, skinAnalysisUpdatedAt: null, skinAnalysisApplied: false,
+    skinHealthAnalysis: null, skinHealthAnalysisUpdatedAt: null, skincarePreferences: { sensitivity: 'unknown', budget: 'any' },
     savedItemIds: [], notForMeItemIds: []
   };
   const BUDGETS = [
@@ -42,7 +43,7 @@
   const state = {
     db: null, profile: structuredClone(DEFAULT_PROFILE), settings: { theme: 'light', fontSize: 'medium' },
     catalog: { items: [], palettes: [], styles: [], occasions: [] }, config: {},
-    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, recommendationController: null, activeEnsembleTab: 'clothing', activeStyleWorkspaceTab: 'ensemble', cachedImages: { skinAnalysis: null, tryOn: null }, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, wardrobeItems: [], wardrobeFilter: 'all', wardrobeObjectUrls: [], ensembleWardrobeObjectUrls: [], walkthroughStep: 0
+    recommendations: [], accessoryRecommendations: [], lastQuery: '', requestId: 0, currentView: 'discover', recommendationsLoading: false, recommendationController: null, activeEnsembleTab: 'clothing', activeStyleWorkspaceTab: 'ensemble', cachedImages: { skinAnalysis: null, tryOn: null }, skinPhotoChangePromise: null, skinPhotoGeneration: 0, photoPreviewUrls: { skinAnalysis: null, tryOn: null }, wardrobeItems: [], wardrobeFilter: 'all', wardrobeObjectUrls: [], ensembleWardrobeObjectUrls: [], walkthroughStep: 0
   };
   const $ = (selector, scope = document) => scope.querySelector(selector);
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
@@ -90,6 +91,7 @@
     const profileRow = await dbRequest('profile', 'get', PROFILE_KEY);
     if (profileRow?.value) {
       state.profile = { ...structuredClone(DEFAULT_PROFILE), ...profileRow.value };
+      state.profile.skincarePreferences = { ...DEFAULT_PROFILE.skincarePreferences, ...(profileRow.value.skincarePreferences || {}) };
       const stored = profileRow.value;
       if (state.profile.displayName === 'myStyle Member') {
         state.profile.displayName = 'James';
@@ -582,7 +584,7 @@
   }
 
   function switchEnsembleTab(tab) {
-    state.activeEnsembleTab = tab === 'accessories' ? 'accessories' : 'clothing';
+    state.activeEnsembleTab = ['accessories', 'skincare'].includes(tab) ? tab : 'clothing';
     $$('[data-ensemble-tab]').forEach(button => {
       const active = button.dataset.ensembleTab === state.activeEnsembleTab;
       button.classList.toggle('is-active', active);
@@ -591,6 +593,7 @@
     });
     $$('[data-ensemble-panel]').forEach(panel => { panel.hidden = panel.dataset.ensemblePanel !== state.activeEnsembleTab; });
     if (state.activeEnsembleTab === 'accessories') renderAccessories(state.accessoryRecommendations);
+    if (state.activeEnsembleTab === 'skincare') renderSkincareRecommendations();
     renderEnsembleWardrobeMatches();
   }
 
@@ -844,6 +847,7 @@
     const target = $('#skin-analysis-preview');
     if (!target) return;
     renderProfileSkinSummary(colors);
+    renderSkinHealthAnalysis(state.profile.skinHealthAnalysis);
     if (!colors || !Object.keys(colors).length) {
       target.innerHTML = '<div class="skin-empty-state"><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div>';
       $('#skin-insight-banner').hidden = true;
@@ -869,6 +873,248 @@
     }
   }
 
+  function readSkincarePreferencesFromUI() {
+    return {
+      sensitivity: $('#skincare-sensitivity')?.value || state.profile.skincarePreferences?.sensitivity || 'unknown',
+      budget: $('#skincare-budget')?.value || state.profile.skincarePreferences?.budget || 'any',
+    };
+  }
+
+  function hydrateSkincarePreferences() {
+    const preferences = { ...DEFAULT_PROFILE.skincarePreferences, ...(state.profile.skincarePreferences || {}) };
+    if ($('#skincare-sensitivity')) $('#skincare-sensitivity').value = preferences.sensitivity;
+    const budget = $('#skincare-budget');
+    if (budget) {
+      const currency = state.profile.country === 'US' ? 'US$' : 'CA$';
+      const budgetLabels = {
+        any: 'No set budget',
+        under25: `Under ${currency}25`,
+        '25to50': `${currency}25–50`,
+        '50to100': `${currency}50–100`,
+        over100: `Over ${currency}100`,
+      };
+      Array.from(budget.options).forEach(option => {
+        if (budgetLabels[option.value]) option.textContent = budgetLabels[option.value];
+      });
+      budget.value = preferences.budget;
+    }
+  }
+
+  function getNestedSkinScore(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (!value || typeof value !== 'object') return null;
+    if (typeof value.ui_score === 'number') return value.ui_score;
+    if (typeof value.score === 'number') return value.score;
+    if (typeof value.raw_score === 'number') return value.raw_score;
+    for (const child of Object.values(value)) {
+      const score = getNestedSkinScore(child);
+      if (score !== null) return score;
+    }
+    return null;
+  }
+
+  function getNestedSkinWords(value) {
+    if (typeof value === 'string') return [value.toLowerCase()];
+    if (!value || typeof value !== 'object') return [];
+    return Object.values(value).flatMap(getNestedSkinWords);
+  }
+
+  function skincareProductSuggestions(metrics, preferences = state.profile.skincarePreferences || {}) {
+    if (!metrics || typeof metrics !== 'object' || !Object.keys(metrics).length) return [];
+    const skinTypeText = getNestedSkinWords(metrics.skin_type).join(' ');
+    const moisture = getNestedSkinScore(metrics.moisture);
+    const oiliness = getNestedSkinScore(metrics.oiliness);
+    const redness = getNestedSkinScore(metrics.redness);
+    const pores = getNestedSkinScore(metrics.pore);
+    const acne = getNestedSkinScore(metrics.acne);
+    const texture = getNestedSkinScore(metrics.texture);
+    const radiance = getNestedSkinScore(metrics.radiance);
+    const sensitive = preferences.sensitivity === 'sensitive' || /redness|sensitive/.test(skinTypeText) || (redness !== null && redness < 65);
+    const dry = /dry/.test(skinTypeText) || (moisture !== null && moisture < 68);
+    const oilyOrCombination = /oily|combination/.test(skinTypeText);
+    const poreOrBlemishFocus = (pores !== null && pores < 65) || (acne !== null && acne < 65);
+    const textureFocus = (texture !== null && texture < 65) || (radiance !== null && radiance < 65);
+    const currencyLabel = state.profile.country === 'US' ? 'USD' : 'CAD';
+    const queryBudget = ({
+      under25: `under ${currencyLabel} 25`,
+      '25to50': `${currencyLabel} 25 to 50`,
+      '50to100': `${currencyLabel} 50 to 100`,
+      over100: `over ${currencyLabel} 100`,
+    })[preferences.budget] || '';
+    const products = [];
+    const add = (id, title, query, reason, category) => {
+      if (products.some(product => product.id === id)) return;
+      const tailoredQuery = [query, sensitive ? 'fragrance free' : '', queryBudget].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      products.push({ id, title, query: tailoredQuery, reason, category });
+    };
+
+    if (dry || moisture === null) {
+      add('hydration', 'Hydration support', 'hydrating facial moisturizer', dry ? 'The skin-health result or your skin-type result suggests hydration is worth exploring.' : 'A basic moisturizing step is useful while building a simple routine.', 'Moisturizers');
+    }
+    if (sensitive) {
+      add('gentle-care', 'Gentle, fragrance-free care', 'gentle fragrance free facial cleanser and moisturizer', 'The results or your sensitivity preference support starting with a gentle, fragrance-free routine.', 'Cleansers and moisturizers');
+    }
+    if (oilyOrCombination || poreOrBlemishFocus || (oiliness !== null && oiliness < 65)) {
+      add('lightweight-care', 'Lightweight cleansing and moisture', 'lightweight non-comedogenic facial cleanser moisturizer', 'Your skin-type or pore/breakout indicators suggest exploring lightweight, non-stripping products.', 'Cleansers and moisturizers');
+    }
+    if (textureFocus) {
+      add('texture-radiance', 'Texture and radiance products', 'gentle facial serum for texture and radiance', 'The results suggest you may want to explore products marketed for skin texture or radiance.', 'Serums');
+    }
+    if (!products.length) {
+      add('daily-basics', 'Simple daily routine', 'gentle facial cleanser moisturizer', 'Start with a straightforward cleanser and moisturizer; use your personal preferences to choose a formula.', 'Cleansers and moisturizers');
+    }
+    add('daily-sunscreen', 'Daily facial sunscreen', 'broad spectrum SPF 30 facial sunscreen', 'Daily broad-spectrum sun protection is a useful routine step regardless of the analysis result.', 'Sunscreen');
+    const sunscreen = products.find(product => product.id === 'daily-sunscreen');
+    const tailored = products.filter(product => product.id !== 'daily-sunscreen').slice(0, 3);
+    return [...tailored, ...(sunscreen ? [sunscreen] : [])];
+  }
+
+  function skincareRetailerLinks(product) {
+    const query = encodeURIComponent(product.query);
+    if (state.profile.country === 'US') {
+      return [
+        { label: 'Sephora US', action: 'Search', url: `https://www.sephora.com/search?keyword=${query}` },
+        { label: 'Lancôme US', action: 'Browse', url: 'https://www.lancome-usa.com/skincare/' },
+        { label: 'Clinique US', action: 'Browse', url: 'https://www.clinique.com/skincare-all' },
+        { label: 'Amazon US', action: 'Search', url: `https://www.amazon.com/s?k=${query}` },
+      ];
+    }
+    return [
+      { label: 'Sephora Canada', action: 'Search', url: `https://www.sephora.com/ca/en/search?keyword=${query}` },
+      { label: 'Lancôme Canada', action: 'Browse', url: 'https://www.lancome.ca/en/skincare/' },
+      { label: 'Clinique Canada', action: 'Browse', url: 'https://www.clinique.ca/skincare-all' },
+      { label: 'Amazon Canada', action: 'Search', url: `https://www.amazon.ca/s?k=${query}` },
+    ];
+  }
+
+  function renderSkincareRecommendations() {
+    const grid = $('#skincare-recommendation-grid');
+    const empty = $('#skincare-empty-state');
+    const status = $('#skincare-status');
+    if (!grid || !empty || !status) return;
+    const metrics = state.profile.skinHealthAnalysis;
+    if (!metrics || !Object.keys(metrics).length) {
+      status.textContent = 'Run skin-health analysis to build your skincare suggestions.';
+      grid.replaceChildren();
+      grid.hidden = true;
+      empty.hidden = false;
+      return;
+    }
+    const preferences = state.profile.skincarePreferences || DEFAULT_PROFILE.skincarePreferences;
+    const products = skincareProductSuggestions(metrics, preferences);
+    status.textContent = `Suggestions based on your latest skin-health analysis${state.profile.skinHealthAnalysisUpdatedAt ? ` · Updated ${new Date(state.profile.skinHealthAnalysisUpdatedAt).toLocaleString()}` : ''}.`;
+    empty.hidden = true;
+    grid.hidden = false;
+    grid.innerHTML = products.map(product => {
+      const links = skincareRetailerLinks(product).map(link => `<a class="button button-outline skincare-retailer-link" href="${escapeHTML(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(link.action)} ${escapeHTML(link.label)} <span aria-hidden="true">↗</span></a>`).join('');
+      return `<article class="skincare-product-card"><p class="skincare-product-category">${escapeHTML(product.category)}</p><h3>${escapeHTML(product.title)}</h3><p>${escapeHTML(product.reason)}</p><div class="skincare-retailer-grid">${links}</div><p class="skincare-query-note">Search focus: ${escapeHTML(product.query)}</p></article>`;
+    }).join('');
+  }
+
+  function renderSkinHealthAnalysis(metrics = state.profile.skinHealthAnalysis) {
+    const target = $('#skin-health-analysis-preview');
+    if (!target) { renderSkincareRecommendations(); return; }
+    if (!metrics || !Object.keys(metrics).length) {
+      target.innerHTML = '<div class="skin-empty-state"><strong>No skin-health results yet</strong><p>Run skin-health analysis to see cosmetic indicators and personalized product-category suggestions.</p></div>';
+      renderSkincareRecommendations();
+      return;
+    }
+    const entries = [
+      ['skin_type', 'Skin type', true], ['moisture', 'Moisture', false], ['oiliness', 'Oiliness', false],
+      ['redness', 'Redness', false], ['pore', 'Pores', false], ['acne', 'Breakout indicator', false],
+      ['texture', 'Texture', false], ['radiance', 'Radiance', false],
+    ];
+    const cards = entries.map(([key, label, isType]) => {
+      if (!(key in metrics)) return '';
+      if (isType) {
+        const value = getNestedSkinWords(metrics[key]).filter(word => /normal|oily|dry|combination|redness/.test(word)).map(word => word.replace(/^./, char => char.toUpperCase()));
+        const unique = [...new Set(value)];
+        return unique.length ? `<div class="skin-health-metric"><strong>${escapeHTML(label)}</strong><span>${escapeHTML(unique.join(' · '))}</span></div>` : '';
+      }
+      const score = getNestedSkinScore(metrics[key]);
+      return score === null ? '' : `<div class="skin-health-metric"><strong>${escapeHTML(label)}</strong><span>${Math.round(score)} / 100</span></div>`;
+    }).filter(Boolean).join('');
+    const stamp = state.profile.skinHealthAnalysisUpdatedAt ? new Date(state.profile.skinHealthAnalysisUpdatedAt).toLocaleString() : 'Saved result';
+    target.innerHTML = `<div class="skin-health-results"><div class="skin-health-results-heading"><div><h3>Skin-health results</h3><p>Provider-generated cosmetic indicators · Updated ${escapeHTML(stamp)}</p></div></div><div class="skin-health-metrics-grid">${cards || '<p>The provider returned results, but no recognized metric values were available to display.</p>'}</div><p class="small-note">Scores are provider ratings; higher values generally indicate a stronger result. These cosmetic indicators are not a medical diagnosis. Product suggestions are category-level starting points; check ingredients, suitability and current prices with the retailer.</p><button class="button button-primary" type="button" id="show-skincare-recommendations">View skincare recommendations <span aria-hidden="true">→</span></button></div>`;
+    renderSkincareRecommendations();
+  }
+
+  async function persistSkincarePreferences() {
+    state.profile.skincarePreferences = readSkincarePreferencesFromUI();
+    try {
+      await persistProfile();
+      renderSkincareRecommendations();
+    } catch (error) {
+      showAlert(`Could not save skincare preferences: ${error.message}`, 'error');
+    }
+  }
+
+  async function pollSkincareTask(taskId, maxAttempts = 30) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => window.setTimeout(resolve, 3000));
+      const result = await apiFetch(`/api/tasks/skincare/${encodeURIComponent(taskId)}`, { method: 'GET' });
+      if (result.status === 'success' || result.status === 'error') return result;
+      const button = $('#run-skincare-analysis');
+      if (button) button.textContent = 'Analyzing skin health…';
+    }
+    throw new Error('Skin-health analysis is taking longer than expected. Please try again in a moment.');
+  }
+
+  async function runSkincareAnalysis() {
+    if (state.skinPhotoChangePromise) {
+      try { await state.skinPhotoChangePromise; } catch (_) { return; }
+    }
+    const selectedPhoto = $('#skin-photo')?.files?.[0];
+    const photo = selectedPhoto || state.cachedImages.skinAnalysis;
+    const photoGeneration = state.skinPhotoGeneration;
+    if (!photo) { showAlert('Choose a front-facing JPG, JPEG or PNG selfie first.', 'error'); return; }
+    if (!$('#skincare-consent')?.checked) { showAlert('Consent is required before sending your selfie to YouCam for skin-health analysis.', 'error'); return; }
+    if (!state.config.youcam_configured) { showAlert('YouCam is not configured for this deployment. Your selfie has not been uploaded.', 'error'); return; }
+    const photoMimeType = supportedPhotoMimeType(photo);
+    if (!photoMimeType) { showAlert('Use a JPG, JPEG or PNG selfie.', 'error'); return; }
+    if (!photo.size || photo.size > 9_500_000) { showAlert('Choose a non-empty image smaller than 9.5 MB.', 'error'); return; }
+    let dimensions;
+    try { dimensions = await getImageDimensions(photo); }
+    catch (error) { showAlert(error.message, 'error'); return; }
+    if (Math.min(dimensions.width, dimensions.height) < 480) {
+      showAlert('For skin-health analysis, the shorter side of the photo must be at least 480 pixels. A 720 × 1,080 pixel photo works well.', 'error'); return;
+    }
+    if (Math.max(dimensions.width, dimensions.height) > 4096) {
+      showAlert('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', 'error'); return;
+    }
+    if (!isCurrentSkinPhoto(photo, photoGeneration)) {
+      showAlert('The selected selfie changed during validation. Please start the analysis again for the current photo.', 'error'); return;
+    }
+    if (selectedPhoto) { try { await rememberPhoto('skinAnalysis', selectedPhoto); } catch (error) { showAlert(error.message, 'error'); return; } }
+    state.profile.skincarePreferences = readSkincarePreferencesFromUI();
+    try { await persistProfile(); } catch (error) { showAlert(`Could not save skincare preferences: ${error.message}`, 'error'); return; }
+    const button = $('#run-skincare-analysis');
+    button.disabled = true;
+    button.textContent = 'Starting analysis…';
+    try {
+      const form = new FormData();
+      form.append('photo', normalizedPhotoBlob(photo), photo.name || `mystyle-skincare.${photoMimeType === 'image/png' ? 'png' : 'jpg'}`);
+      form.append('consent', 'true');
+      const task = await apiFetch('/api/skincare-analysis', { method: 'POST', body: form });
+      button.textContent = 'Analyzing skin health…';
+      const result = await pollSkincareTask(task.task_id);
+      if (!isCurrentSkinPhoto(photo, photoGeneration)) throw new Error('The selfie changed while analysis was running. The result was discarded; run skin-health analysis again for the current photo.');
+      if (result.status === 'error') throw new Error(result.message || 'Skin-health analysis could not be completed.');
+      const metrics = result.metrics || {};
+      if (!Object.keys(metrics).length) throw new Error('YouCam completed the task but did not return recognizable skin-health scores. Check that Skin Analysis v2.1 is enabled for your account.');
+      state.profile.skinHealthAnalysis = metrics;
+      state.profile.skinHealthAnalysisUpdatedAt = new Date().toISOString();
+      await persistProfile();
+      renderSkinHealthAnalysis(metrics);
+      showAlert('Skin-health analysis complete. Skincare suggestions are available in Ensemble Style.', 'good');
+    } catch (error) {
+      showAlert(error.message || 'YouCam could not complete skin-health analysis.', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Analyze skin health';
+    }
+  }
+
   async function validateImageDimensions(file) {
     const dimensions = await getImageDimensions(file);
     if (dimensions.width < 320 || dimensions.height < 320) throw new Error('The image must be at least 320 × 320 pixels. Choose a larger photo.');
@@ -876,15 +1122,73 @@
     return dimensions;
   }
 
+  function isSamePhotoFile(previous, next) {
+    if (!previous || !next) return false;
+    return previous.name === next.name
+      && previous.size === next.size
+      && Number(previous.lastModified || 0) === Number(next.lastModified || 0);
+  }
+
+  function isCurrentSkinPhoto(photo, generation) {
+    if (generation !== state.skinPhotoGeneration) return false;
+    const selected = $('#skin-photo')?.files?.[0];
+    const current = selected || state.cachedImages.skinAnalysis;
+    return isSamePhotoFile(photo, current);
+  }
+
+  async function clearAnalysesForReplacedPhoto() {
+    const hadColourResults = Boolean(state.profile.skinAnalysis);
+    const hadResults = Boolean(state.profile.skinAnalysis || state.profile.skinHealthAnalysis);
+    const usedDetectedPalette = state.profile.colorScheme === 'selfie';
+    if (!hadResults && !usedDetectedPalette) return false;
+    state.profile.skinAnalysis = null;
+    state.profile.skinAnalysisUpdatedAt = null;
+    state.profile.skinAnalysisApplied = false;
+    state.profile.skinHealthAnalysis = null;
+    state.profile.skinHealthAnalysisUpdatedAt = null;
+    if (usedDetectedPalette) state.profile.colorScheme = 'earth';
+    renderSkinAnalysis(null);
+    renderSkinHealthAnalysis(null);
+    renderPaletteSelect();
+    renderAccessories(state.accessoryRecommendations);
+    renderSkincareRecommendations();
+    let persisted = true;
+    try { await persistProfile(); } catch (error) {
+      persisted = false;
+      showAlert(`Previous analysis results were cleared in this session, but could not be saved: ${error.message}`, 'error');
+    }
+    if (hadColourResults || usedDetectedPalette) await requestRecommendations(state.lastQuery);
+    if (hadResults && persisted) {
+      showAlert('New selfie selected. Previous colour and skin-health results were cleared. Run either analysis again to use this photo.', 'info');
+    }
+    return true;
+  }
+
   async function setSkinPhotoPreview() {
     const file = $('#skin-photo')?.files?.[0];
     if (!file) return;
-    try {
+    const pending = (async () => {
+      if (!supportedPhotoMimeType(file)) throw new Error('Choose a JPG, JPEG or PNG photo.');
+      if (!file.size || file.size > 9_500_000) throw new Error('Choose a non-empty photo smaller than 9.5 MB.');
       await validateImageDimensions(file);
+      const previous = state.cachedImages.skinAnalysis;
+      const replaced = !isSamePhotoFile(previous, file);
       await rememberPhoto('skinAnalysis', file);
+      if (replaced) {
+        state.skinPhotoGeneration += 1;
+        if ($('#skin-consent')) $('#skin-consent').checked = false;
+        if ($('#skincare-consent')) $('#skincare-consent').checked = false;
+        await clearAnalysesForReplacedPhoto();
+      }
+    })();
+    state.skinPhotoChangePromise = pending;
+    try {
+      await pending;
     } catch (error) {
       showAlert(error.message, 'error');
       $('#skin-photo').value = '';
+    } finally {
+      if (state.skinPhotoChangePromise === pending) state.skinPhotoChangePromise = null;
     }
   }
 
@@ -938,8 +1242,12 @@
   }
 
   async function runSkinAnalysis() {
+    if (state.skinPhotoChangePromise) {
+      try { await state.skinPhotoChangePromise; } catch (_) { return; }
+    }
     const selectedPhoto = $('#skin-photo')?.files?.[0];
     const photo = selectedPhoto || state.cachedImages.skinAnalysis;
+    const photoGeneration = state.skinPhotoGeneration;
     if (!photo) { showAlert('Choose a front-facing JPG, JPEG or PNG selfie first.', 'error'); return; }
     if (!$('#skin-consent')?.checked) { showAlert('Consent is required before sending the selfie to YouCam.', 'error'); return; }
     if (!state.config.youcam_configured) { showAlert('YouCam skin analysis is not configured on this deployment. Add YCE_API_KEY in environment variables. Your selfie has not been uploaded.', 'error'); return; }
@@ -957,6 +1265,9 @@
       showAlert('The longest side of the image must not exceed 4,096 pixels. Choose a smaller image.', 'error');
       return;
     }
+    if (!isCurrentSkinPhoto(photo, photoGeneration)) {
+      showAlert('The selected selfie changed during validation. Please start the analysis again for the current photo.', 'error'); return;
+    }
     if (selectedPhoto) { try { await rememberPhoto('skinAnalysis', selectedPhoto); } catch (error) { showAlert(error.message, 'error'); return; } }
     const button = $('#run-skin-analysis');
     button.disabled = true;
@@ -969,6 +1280,7 @@
       button.textContent = 'Analyzing colour tones…';
       const result = await pollColorTask(task.task_id);
       if (result.status === 'error') throw new Error(result.message || 'Skin colour analysis could not be completed.');
+      if (!isCurrentSkinPhoto(photo, photoGeneration)) throw new Error('The selfie changed while analysis was running. The result was discarded; run colour analysis again for the current photo.');
       const colors = result.colors || {};
       const hasSkinColour = typeof colors.skin_color === 'string' && /^#[0-9a-f]{6}$/i.test(colors.skin_color);
       if (!hasSkinColour) throw new Error('YouCam completed the task but did not return a usable skin colour value. Try a clearer, evenly lit front-facing selfie.');
@@ -1435,6 +1747,7 @@
       if (city) city.value = '';
       state.profile.city = '';
       renderBudgetOptions();
+      hydrateSkincarePreferences();
     });
     $('#refresh-edit')?.addEventListener('click', () => requestRecommendations(state.lastQuery));
     $('#style-search-form')?.addEventListener('submit', event => { event.preventDefault(); requestRecommendations($('#style-search')?.value.trim() || ''); });
@@ -1442,6 +1755,17 @@
     $('#skin-photo')?.addEventListener('change', setSkinPhotoPreview);
     $('#try-on-photo')?.addEventListener('change', setTryOnPhotoPreview);
     $('#run-skin-analysis')?.addEventListener('click', runSkinAnalysis);
+    $('#run-skincare-analysis')?.addEventListener('click', runSkincareAnalysis);
+    document.addEventListener('click', event => {
+      if (event.target.closest('#show-skincare-recommendations')) {
+        state.activeStyleWorkspaceTab = 'ensemble';
+        switchView('discover');
+        switchStyleWorkspaceTab('ensemble');
+        switchEnsembleTab('skincare');
+      }
+    });
+    $('#skincare-sensitivity')?.addEventListener('change', persistSkincarePreferences);
+    $('#skincare-budget')?.addEventListener('change', persistSkincarePreferences);
     $('#run-try-on')?.addEventListener('click', runTryOn);
   }
 
@@ -1455,11 +1779,13 @@
       state.config = config;
       state.db = await openDatabase();
       await loadLocalState();
+      hydrateSkincarePreferences();
       await loadCachedPhotos();
       renderWardrobe();
       updateWardrobeCategoryOptions();
       renderProfileChoices();
       renderSkinAnalysis(state.profile.skinAnalysis);
+      renderSkinHealthAnalysis(state.profile.skinHealthAnalysis);
       updateSeasonDetails();
       renderSaved();
       switchView(state.profile.hasCompletedQuiz ? 'discover' : 'quiz');
@@ -1467,7 +1793,9 @@
       await requestRecommendations('');
       if (!state.config.youcam_configured) {
         const note = $('#skin-photo-help');
-        if (note) note.innerHTML = '<strong>Colour analysis is not configured on this deployment</strong><p>Add YCE_API_KEY to the server environment to enable live YouCam analysis. Your selfie will not be uploaded unless the app has the key and you provide consent.</p>';
+        if (note) note.innerHTML = '<strong>YouCam analysis is not configured on this deployment</strong><p>Add YCE_API_KEY to the server environment to enable live colour-tone and skin-health analysis. A selfie is not uploaded until a configured workflow is started with your separate consent.</p>';
+        const skincareStatus = $('#skincare-status');
+        if (skincareStatus) skincareStatus.textContent = 'Skincare suggestions require YCE_API_KEY and YouCam Skin Analysis v2.1 access. Your selfie has not been uploaded.';
       }
     } catch (error) {
       showAlert(`${error.message} Refresh the page to retry loading your profile.`, 'error');

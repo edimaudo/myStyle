@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/assets/style.css">
-  <link rel="stylesheet" href="/assets/marketing-controls.css?v=20261023-button-system">
-  <script defer src="/assets/app.js"></script>
+  <link rel="stylesheet" href="/assets/style.css?v=20261024-skincare-integrated">
+  <link rel="stylesheet" href="/assets/marketing-controls.css?v=20261024-skincare-integrated">
+  <script defer src="/assets/app.js?v=20261024-skincare-integrated"></script>
 </head>
 <body class="app-body mystyle-body">
   <a class="skip-link" href="#main">Skip to content</a>
@@ -59,6 +59,7 @@
         <div class="ensemble-tabs" role="tablist" aria-label="Ensemble recommendations">
           <button type="button" role="tab" id="ensemble-tab-clothing" class="ensemble-tab is-active" data-ensemble-tab="clothing" aria-selected="true" aria-controls="ensemble-panel-clothing">Clothing</button>
           <button type="button" role="tab" id="ensemble-tab-accessories" class="ensemble-tab" data-ensemble-tab="accessories" aria-selected="false" aria-controls="ensemble-panel-accessories">Accessories</button>
+          <button type="button" role="tab" id="ensemble-tab-skincare" class="ensemble-tab" data-ensemble-tab="skincare" aria-selected="false" aria-controls="ensemble-panel-skincare">Skincare</button>
         </div>
         <section id="ensemble-panel-clothing" class="ensemble-panel" role="tabpanel" aria-labelledby="ensemble-tab-clothing" data-ensemble-panel="clothing">
           <div class="recommendation-meta"><p id="recommendation-status" aria-live="polite">Loading recommendations…</p></div>
@@ -69,6 +70,12 @@
           <div class="recommendation-meta"><p id="accessory-status" aria-live="polite">Complete skin analysis to personalise accessories.</p></div>
           <div id="accessory-empty-state" class="accessory-empty-state"><h2>Start with skin analysis</h2><p>Analyse a selfie to see your detected colour notes, then Ensemble will suggest bags, scarves, headwear and shoes that work with those colours.</p><button class="button button-primary" type="button" data-view="skin-analysis">Go to skin analysis</button></div>
           <div id="accessory-grid" class="style-grid" aria-live="polite" hidden></div>
+        </section>
+        <section id="ensemble-panel-skincare" class="ensemble-panel skincare-ensemble-panel" role="tabpanel" aria-labelledby="ensemble-tab-skincare" data-ensemble-panel="skincare" hidden>
+          <div class="recommendation-meta"><p id="skincare-status" aria-live="polite">Run skin-health analysis to build your skincare suggestions.</p></div>
+          <div id="skincare-empty-state" class="accessory-empty-state"><h2>Start with skin-health analysis</h2><p>Use the selfie in Skin analysis to get cosmetic skin-health indicators and product-category suggestions.</p><button class="button button-primary" type="button" data-view="skin-analysis">Go to skin analysis</button></div>
+          <div id="skincare-recommendation-grid" class="skincare-recommendation-grid" aria-live="polite" hidden></div>
+          <p class="skincare-disclaimer">Suggestions are product categories, not medical advice or exact-SKU matches. Confirm ingredients, suitability, current prices and availability with the retailer. Seek advice from a qualified professional for persistent or concerning skin symptoms.</p>
         </section>
         </div>
         <div id="linked-panel-profile" class="style-workspace-panel" role="tabpanel" aria-labelledby="linked-tab-profile" data-linked-panel="profile" hidden>
@@ -112,10 +119,23 @@
       </section>
 
       <section class="app-view" id="view-skin-analysis" data-view-panel="skin-analysis" hidden>
-        <div class="welcome-row"><div><h1>Skin analysis</h1><p class="page-lede">Detected colour values guide your clothing palette and personalise accessories in Ensemble. Your photo stays in this browser for reuse unless you replace it.</p></div><button class="button button-outline skin-profile-link" data-view="discover" data-linked-tab="profile" type="button">Style profile <span aria-hidden="true">→</span></button></div>
-        <section class="profile-card skin-analysis-card" id="skin-analysis-card"><div class="profile-card-heading"><div><h2>Skin and facial colour analysis</h2><p>Use a selfie to identify colour cues for clothing and accessories. The photo is kept in this browser for reuse and sent to YouCam only when you consent and run analysis.</p></div></div>
+        <div class="welcome-row"><div><h1>Skin analysis</h1><p class="page-lede">Use one selfie for two separate analyses: facial colour cues for clothing and accessories, and optional skin-health indicators for skincare discovery. Each analysis requires its own consent. Your photo stays in this browser for reuse unless you replace it.</p></div><button class="button button-outline skin-profile-link" data-view="discover" data-linked-tab="profile" type="button">Style profile <span aria-hidden="true">→</span></button></div>
+        <section class="profile-card skin-analysis-card" id="skin-analysis-card"><div class="profile-card-heading"><div><h2>Facial colour-tone analysis</h2><p>Use a selfie to identify colour cues for clothing and accessories. The photo is kept in this browser for reuse and sent to YouCam only when you consent and run analysis.</p></div></div>
             <div class="skin-analysis-layout"><div class="skin-analysis-controls"><label class="upload-label" for="skin-photo">Choose a front-facing selfie (JPG, JPEG or PNG)</label><input id="skin-photo" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/jpg,image/png" aria-describedby="skin-photo-help"><div id="skin-photo-memory" class="stored-photo-preview" aria-live="polite"></div><div class="photo-guidance" id="skin-photo-help"><strong>Choosing a good photo</strong><p>For the best colour reading, use a clear selfie or head-and-shoulders photo:</p><ul><li>Stand facing the camera, with just one person in the photo. Keep the whole face centred and make it fill most of the picture.</li><li>Use soft, even daylight. Skip filters and coloured lighting.</li><li>Choose a JPG, JPEG or PNG under 9.5 MB. The photo must be at least 320 pixels wide and tall; the longest side can be up to 4,096 pixels.</li></ul><p>A photo around 720 × 1,080 pixels works well. Larger photos are resized for you.</p></div><label class="consent-line skin-consent"><input id="skin-consent" type="checkbox"><span>I consent to sending this selfie to YouCam for facial colour-tone analysis. <span class="required-marker" aria-hidden="true">*</span><span class="sr-only">Required to analyze the image</span></span></label><button class="button button-outline" id="run-skin-analysis" type="button">Analyze my colours</button></div><div id="skin-analysis-preview" class="skin-analysis-preview" aria-live="polite"><div class="skin-empty-state"><strong>Your colour notes will appear here</strong><p>Run the analysis to add more colour context to Ensemble.</p></div></div></div>
           </section>
+        <section class="profile-card skincare-analysis-card" id="skin-health-analysis-card">
+          <div class="profile-card-heading"><div><h2>Skin health and skincare</h2><p>Run a separate skin-health analysis to personalize skincare product categories. It uses the same selfie selected above, but requires its own consent and access to YouCam Skin Analysis v2.1.</p></div></div>
+          <div class="skincare-analysis-controls">
+            <div class="skincare-preferences-grid">
+              <div class="form-field"><label for="skincare-sensitivity">Skin sensitivity</label><select id="skincare-sensitivity"><option value="unknown">Not sure yet</option><option value="sensitive">Sensitive or reactive</option><option value="not-sensitive">Not typically sensitive</option></select></div>
+              <div class="form-field"><label for="skincare-budget">Budget per product</label><select id="skincare-budget"><option value="any">No set budget</option><option value="under25">Under CA$25</option><option value="25to50">CA$25–50</option><option value="50to100">CA$50–100</option><option value="over100">Over CA$100</option></select></div>
+            </div>
+            <p class="small-note">For skin-health analysis, use a photo with at least 480 pixels on its shorter side. Around 720 × 1,080 pixels works well.</p>
+            <label class="consent-line skincare-consent"><input id="skincare-consent" type="checkbox"><span>I consent to sending this selfie to YouCam for skin-health analysis. This is separate from facial colour-tone analysis. <span class="required-marker" aria-hidden="true">*</span><span class="sr-only">Required for skin-health analysis</span></span></label>
+            <button class="button button-primary" id="run-skincare-analysis" type="button">Analyze skin health</button>
+          </div>
+          <div id="skin-health-analysis-preview" class="skin-health-analysis-preview" aria-live="polite"><div class="skin-empty-state"><strong>No skin-health results yet</strong><p>Run skin-health analysis to see cosmetic indicators and product-category suggestions.</p></div></div>
+        </section>
       </section>
 
       <section class="app-view" id="view-saved" data-view-panel="saved" hidden>

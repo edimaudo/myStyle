@@ -668,12 +668,12 @@ def test_non_image_upload_is_rejected(client):
     assert response.status_code == 415
 
 
-def test_app_ui_uses_selfie_only_for_skin_analysis(client):
+def test_app_ui_uses_selfie_for_separate_colour_and_skin_health_analyses(client):
     signed_in(client)
     response = client.get("/app")
     html = response.text
-    assert "Skin and facial colour analysis" in html
-    assert "Detected colour values guide your clothing palette and personalise accessories in Ensemble" in html
+    assert "Facial colour-tone analysis" in html
+    assert "Use one selfie for two separate analyses" in html
     assert "try-on-dialog" in html
     assert "Skin analysis" in html
     script = (__import__("pathlib").Path(__file__).resolve().parents[1] / "public" / "assets" / "app.js").read_text()
@@ -905,7 +905,7 @@ def test_all_button_families_share_authoritative_theme_aware_tokens():
     assert ".wardrobe-match-actions .button" in controls
     assert "--action-control-height: max(40px, calc(44px * var(--font-scale, 1)))" in controls
     assert 'input[type="file"]::file-selector-button' in controls
-    assert all("marketing-controls.css?v=20261023-button-system" in template.read_text(encoding="utf-8") for template in templates)
+    assert all("marketing-controls.css?v=20261024-skincare-integrated" in template.read_text(encoding="utf-8") for template in templates)
 
 
 def test_button_design_uses_shared_theme_and_font_scale_tokens():
@@ -919,3 +919,184 @@ def test_button_design_uses_shared_theme_and_font_scale_tokens():
     assert ".wardrobe-filter.is-active" in controls
     for selector in (".theme-toggle,", ".icon-control,", ".dialog-close,", ".wardrobe-filter,", ".save-style-button"):
         assert selector in controls
+
+
+def test_skincare_analysis_requires_a_separate_explicit_consent(client, monkeypatch):
+    csrf = signed_in(client)
+    monkeypatch.setattr(main, "YCE_API_KEY", "test-key")
+    response = client.post(
+        "/api/skincare-analysis",
+        headers={"X-CSRF-Token": csrf},
+        data={"consent": "false"},
+        files={"photo": ("selfie.jpg", b"fake-image", "image/jpeg")},
+    )
+    assert response.status_code == 400
+    assert "skin-health analysis" in response.json()["detail"].lower()
+
+
+def test_skincare_analysis_without_provider_key_does_not_upload(client, monkeypatch):
+    csrf = signed_in(client)
+    monkeypatch.setattr(main, "YCE_API_KEY", "")
+    response = client.post(
+        "/api/skincare-analysis",
+        headers={"X-CSRF-Token": csrf},
+        data={"consent": "true"},
+        files={"photo": ("selfie.jpg", b"fake-image", "image/jpeg")},
+    )
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"].lower()
+
+
+def test_skincare_task_uses_v21_and_only_sd_analysis_features(monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr(main, "YCE_API_KEY", "test-key")
+
+    class Response:
+        is_error = False
+        status_code = 200
+        def json(self):
+            return {"data": {"task_id": "skin-task-123"}}
+
+    class AsyncClient:
+        def __init__(self, timeout=30):
+            self.timeout = timeout
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return False
+        async def post(self, url, headers, json):
+            assert url.endswith("/s2s/v2.1/task/skin-analysis")
+            assert headers["Authorization"] == "Bearer test-key"
+            assert json["src_file_id"] == "uploaded-file-id"
+            assert json["format"] == "json"
+            assert json["dst_actions"] == ["skin_type", "moisture", "oiliness", "redness", "pore", "acne", "radiance", "texture"]
+            assert all(not action.startswith("hd_") for action in json["dst_actions"])
+            return Response()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", AsyncClient)
+    response = asyncio.run(main.create_yce_skin_health_task("uploaded-file-id"))
+    assert response["data"]["task_id"] == "skin-task-123"
+
+
+def test_skin_health_metric_parser_extracts_scores_without_image_urls():
+    payload = {
+        "status": 200,
+        "data": {
+            "task_status": "success",
+            "results": {
+                "skin_type": {"whole": {"type": "Combination"}, "t_zone": {"type": "Oily"}},
+                "moisture": {"ui_score": 72, "raw_score": 59.4, "output_mask_name": "moisture.png"},
+                "pore": {"nose": {"ui_score": 55}},
+                "internal_image_url": "https://provider.example/private-result.png",
+            },
+        },
+    }
+    metrics = main.find_skin_health_payload(payload)
+    assert metrics["skin_type"]["whole"]["type"] == "Combination"
+    assert metrics["moisture"]["ui_score"] == 72
+    assert metrics["pore"]["nose"]["ui_score"] == 55
+    assert "internal_image_url" not in metrics
+    assert "output_mask_name" not in metrics["moisture"]
+
+
+def test_skincare_task_status_returns_sanitized_metrics(client, monkeypatch):
+    signed_in(client)
+    monkeypatch.setattr(main, "YCE_API_KEY", "test-key")
+
+    class Response:
+        is_error = False
+        status_code = 200
+        def json(self):
+            return {
+                "status": 200,
+                "data": {"task_status": "success", "results": {
+                    "skin_type": {"whole": {"type": "Dry"}},
+                    "moisture": {"ui_score": 54, "raw_score": 42},
+                }},
+            }
+
+    class AsyncClient:
+        def __init__(self, timeout=25):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return False
+        async def get(self, url, headers):
+            assert url.endswith("/s2s/v2.1/task/skin-analysis/skin-task-123")
+            assert headers["Authorization"] == "Bearer test-key"
+            return Response()
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", AsyncClient)
+    response = client.get("/api/tasks/skincare/skin-task-123")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["task_kind"] == "skincare"
+    assert body["metrics"]["skin_type"]["whole"]["type"] == "Dry"
+    assert body["metrics"]["moisture"]["ui_score"] == 54
+
+
+def test_skincare_is_available_in_skin_analysis_and_ensemble_with_four_retailers(client):
+    signed_in(client)
+    html = client.get("/app").text
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    css = (root / "public" / "assets" / "style.css").read_text(encoding="utf-8")
+    assert 'data-ensemble-tab="skincare"' in html
+    assert 'data-ensemble-panel="skincare"' in html
+    assert 'id="run-skincare-analysis"' in html
+    assert 'id="skincare-consent"' in html
+    assert 'id="skin-health-analysis-preview"' in html
+    assert 'id="skincare-recommendation-grid"' in html
+    assert 'id="skincare-sensitivity"' in html
+    assert 'id="skincare-budget"' in html
+    assert "async function runSkincareAnalysis()" in script
+    assert "async function pollSkincareTask(" in script
+    assert "/api/skincare-analysis" in script
+    assert "/api/tasks/skincare/" in script
+    assert "skinHealthAnalysisUpdatedAt" in script
+    assert "function skincareProductSuggestions(" in script
+    assert "https://www.sephora.com/ca/en/search?keyword=" in script
+    assert "https://www.lancome.ca/en/skincare/" in script
+    assert "https://www.clinique.ca/skincare-all" in script
+    assert "https://www.amazon.ca/s?k=" in script
+    assert "skin-health analysis" in html.lower()
+    assert ".skincare-product-card" in css
+    assert ".skincare-retailer-grid" in css
+
+
+def test_skincare_uses_country_specific_retailer_paths_and_currency():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "https://www.sephora.com/search?keyword=${query}" in script
+    assert "https://www.lancome-usa.com/skincare/" in script
+    assert "https://www.clinique.com/skincare-all" in script
+    assert "https://www.amazon.com/s?k=${query}" in script
+    assert "state.profile.country === 'US' ? 'US$' : 'CA$'" in script
+    assert "under ${currencyLabel} 25" in script
+
+
+def test_replacing_selfie_clears_old_colour_and_skin_health_results():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "function isSamePhotoFile(previous, next)" in script
+    assert "async function clearAnalysesForReplacedPhoto()" in script
+    assert "state.profile.skinAnalysis = null;" in script
+    assert "state.profile.skinHealthAnalysis = null;" in script
+    assert "New selfie selected. Previous colour and skin-health results were cleared." in script
+    assert "state.skinPhotoGeneration += 1;" in script
+    assert "if ($('#skin-consent')) $('#skin-consent').checked = false;" in script
+    assert "if ($('#skincare-consent')) $('#skincare-consent').checked = false;" in script
+    assert "isCurrentSkinPhoto(photo, photoGeneration)" in script
+
+
+def test_skincare_recommendations_are_category_level_and_keep_sunscreen_included():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "public" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "hydration is worth exploring" in script
+    assert "lightweight non-comedogenic facial cleanser moisturizer" in script
+    assert "broad spectrum SPF 30 facial sunscreen" in script
+    assert "const tailored = products.filter(product => product.id !== 'daily-sunscreen').slice(0, 3);" in script
+    assert "These cosmetic indicators are not a medical diagnosis" in script or "These results are not a medical diagnosis" in script

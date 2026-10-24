@@ -1,115 +1,163 @@
-# myStyle — Personal Styling Studio
+# myStyle
 
-A FastAPI + Jinja2 prototype for a Stitch Fix / Trunk Club-inspired personal styling experience. Users can choose a colour scheme or take a style quiz, save fit/budget/lifestyle preferences, receive seasonal clothing recommendations through Ensemble for Canada or the United States, save favourite pieces, and use feedback such as **Not for me** to refine future recommendations. An optional selfie workflow uses YouCam's Facial Color Tones Analyzer; detected colour values are saved in the browser profile and the selfie is kept separately in local IndexedDB for reuse.
+myStyle is a responsive personal-styling web app built with **FastAPI, Jinja2, and browser-side storage**. It combines seasonal clothing inspiration, a saved style profile, facial colour-tone analysis, optional skin-health analysis for skincare discovery, virtual try-on, shopping comparisons, and a private wardrobe catalogue.
 
-## Current product scope
+## Product overview
 
-- **myStyle branding:** myStyle is the application name. Ensemble and Style profile live in one shared workspace with separate tabs, so recommendations and profile editing stay connected without mixing their controls.
-- **Personal style quiz:** style aesthetics, occasions, palette and item-budget target.
-- **Custom colour schemes:** choose a palette direction or type the colours you want to build around.
-- **Season-aware Ensemble recommendations:** auto-detects the current North American season (spring, summer, fall or winter) or lets a user choose a season manually. Climate preference is saved separately.
-- **US / Canada support:** users choose their market; Buy / Find Similar opens country-aware Google Shopping listing comparisons and adds Amazon Canada search for Canadian profiles. The app avoids hard-coded item/SKU URLs because its fashion photographs are inspiration, not linked inventory.
-- **Recommendation logic:** deterministic ranking uses style tags, occasions, selected and custom colours, skin-analysis colour cues, preferred fit, season, climate, per-item budget target and `Not for me` feedback. Catalogue search is a true filter with common product synonyms, not just a ranking nudge. Weather suitability is a hard gate for fall/winter clothing: cold climates require cold-weather metadata, while variable climates prioritize tagged cold-weather looks and actual layering, knitwear or outerwear. Light standalone tops are excluded from that seasonal combination. After a successful skin analysis, the guided palette is selected automatically and recommendations are refreshed; the user can choose a different palette later. The standard UI uses deterministic in-process ranking so search, clear and refresh do not wait for a third-party AI call.
-- **Gender and location preferences:** Style quiz and Style profile offer no preference, women's styles, men's styles, or gender-neutral/unisex. The Style profile's Country selection controls a Province or state dropdown: Canada shows its provinces and territories; the United States shows all 50 states. Province or state appears before City, and changing country clears the previous region and city. Every catalogue item has an explicit women/men/unisex tag; a selected range only receives items tagged for that range or unisex. Legacy saved values such as `male` and `female` are normalized before recommendations are generated.
-- **Real-photo style catalogue:** Ensemble uses 75 manually curated Pexels fashion-photo references: 27 men's clothing looks, 27 women's clothing looks, 9 gender-neutral clothing looks, and 12 accessory styling references. The cards show actual people wearing clothes, not vector drawings. The title and colour tags describe the intended style reference; each card links back to Pexels for attribution/discovery. This is a deliberately quality-first starter set, not 100 looks per group; do not pad it by reusing the same image under different labels. Expand it using an authorized product/photo feed and photo-by-photo verification.
-- **Virtual try-on from Ensemble:** All catalogue clothing photo references and the supported accessory types (bags, hats, scarves and shoes) expose a Virtual try-on action. After consent, the app sends the user's saved/replaced target photo and the selected reference to the corresponding YouCam workflow. A wardrobe upload is not required to try on a recommended item. Whether a provider can successfully process a particular photograph still depends on its framing and content; a configured provider key and available units are required.
-- **My wardrobe repository:** Users can add photos of their own clothing and accessories with a name, category, colours, season and notes. Photos and details are stored only in IndexedDB in the current browser; they do not upload on save and do not sync across devices. The Ensemble "From My wardrobe" area appears only when the wardrobe contains real saved items that match the current recommendations. Those items can also be used as reference images for supported virtual try-on.
-- **Retailer search:** Buy opens a dialog with a product-focused query based on the main garment, colours, profile audience, budget and chosen market. It is limited to Google Shopping listing comparisons and, for Canadian profiles, Amazon Canada search. These are not exact-SKU links and not affiliate claims; the user confirms the final product, price, size and stock with the seller.
-- **Ensemble tabs:** Clothing recommendations are available immediately. Accessories are intentionally empty until a valid skin analysis is saved; the accessory ranking then uses the derived colour guide alongside season, budget, gender preference, fit and occasion. The accessory try-on routes bags, hats, scarves and shoes to YouCam's dedicated endpoints.
-- **Local photo reuse:** Skin-analysis and try-on photos are stored in separate IndexedDB entries in the current browser. Each is reused until a replacement is selected; each submission still requires consent. Photos are not sent to YouCam on selection alone.
-- **First visit and walkthrough:** A new local profile opens the Style quiz first. The myStyle Walkthrough sidebar item opens a guided sequence with Back, Next and Skip controls.
-- **Skin colour analysis:** uploads a front-facing JPG/PNG selfie to YouCam only after consent, polls the task, shows detected skin/hair/eye/brow/lip colour values and applies a cautious, heuristic palette guide to Ensemble ranking. Style profile has a greyed-out, read-only skin-analysis summary before the first analysis and refreshes it after each new analysis. The selfie is stored only in local IndexedDB for reuse and is not sent until the user starts analysis with consent. This does not claim to provide a professional seasonal colour analysis or decide which colours a person is allowed to wear.
-- **Saved pieces:** profile and saved / hidden feedback persist in IndexedDB in the current browser. They do not synchronize across browsers or devices.
-- **Dark mode:** uses a plum/charcoal surface palette with coral/apricot accents instead of a green-dominant theme.
-- **Display accessibility:** responsive layout, keyboard focus styling, reduced-motion support, light/dark mode, and small/medium/large text controls.
+### Style profile and Ensemble
 
-## Product and image data limitation
+The sidebar entry **Ensemble Style** opens one workspace with separate tabs for **Your Style** (recommendations) and **Your style profile** (preferences). The profile includes country, state or province, city, preferred style range, occasions, palette, fit, sizes, budget, season, and typical local climate. Choosing Canada displays Canadian provinces and territories; choosing the United States displays all 50 states. Changing countries clears the old region and city.
 
-This is a two-week MVP foundation, not a live retail product aggregator. The built-in catalogue contains **75 curated real fashion-photo references** sourced from Pexels, not guaranteed-to-exist SKUs. Photos show real outfits but are style inspiration; a pictured outfit is not necessarily sold as a single product. Budget targets are illustrative, not current prices. Buy / Find Similar opens Google Shopping live-listing comparisons and, for Canadian profiles, Amazon Canada search. Verify the exact item, current price, size, inventory, shipping and return terms with the seller.
+Recommendations are ranked locally from the saved profile and catalogue metadata. They account for style and occasion preferences, colours, fit, budget, season, climate, skin-analysis colour cues, and feedback such as **Not for me**. Search filters the catalogue for matching terms and common synonyms instead of simply promoting unrelated items. Fall and winter suggestions are screened for seasonal and weather suitability before ranking.
 
-For a production shopping service, integrate authorized retailer/affiliate product feeds or catalogue APIs, plus per-SKU product images and variant data. The current code does not scrape retailer pages or claim that an image reference is an available SKU. Pexels photos are used as references under the Pexels license; Pexels permits use on websites and apps but restricts bulk redistribution and making a competing photo library. Keep the set curated and do not turn it into a photo-rehosting service.
+Accessories appear after a usable skin-analysis result has been saved. Users can change the selected palette at any time; detected colours are optional styling inspiration, not rules about what a person should wear.
 
-## Skin analysis and privacy
+### Fashion-photo catalogue
 
-- The skin-analysis selfie is used only by the facial colour-tone workflow and is never reused as the try-on target photo. The try-on photo is stored separately. Each image stays in IndexedDB in this browser for reuse until replaced or cleared by the user.
-- The frontend requires the user to select a selfie and check consent before the request is made.
-- The backend requires `consent=true`, accepts JPG/JPEG/PNG, enforces a 9.5 MB limit, uploads via YouCam's File API and creates a `skin-tone-analysis` task.
-- The browser displays and stores the selected selfie in a separate IndexedDB image store so the user can reuse it without reselecting it. It is sent to YouCam only after explicit consent and starting analysis. Detected colour values are stored separately in the local profile.
-- Provider retention and processing are governed by YouCam's terms. Add a formal privacy policy, deletion/help contact and production authentication before publicly opening this prototype.
-- The heuristic palette direction is an optional suggestion based on detected image colour values, not a definitive undertone assessment, medical conclusion or personal colour consultant diagnosis. Size values and fit notes are saved as profile context; without live retailer SKU data, the app cannot verify a specific garment’s size availability or fit.
+The starter catalogue contains **75 curated Pexels photo references**: 27 men's clothing looks, 27 women's clothing looks, 9 gender-neutral clothing looks, and 12 accessory references. These photos are outfit inspiration, not a verified inventory of purchasable products. Each card credits Pexels and offers **Buy / find similar**, **Virtual try-on** when supported, saving, and recommendation feedback.
+
+If a catalogue photo fails to load, the app tries alternate image sizes. If it still fails, the card is removed instead of displaying a broken-photo tile. If no photos load, the user can refresh recommendations. Remote photo availability can change; check the references from a network-enabled environment before deployment:
+
+```bash
+python scripts/verify_photo_catalog.py
+```
+
+The script checks response status, image content type, empty results, and duplicate image hashes. It does not save or redistribute the images.
+
+### Shop similar items
+
+Shopping links are intentionally limited to:
+
+- **Compare live product listings:** a country-specific Google Shopping search for the selected item and relevant profile details.
+- **Amazon Canada:** an Amazon.ca search shown for Canadian profiles.
+
+These are live search results, not exact-SKU product links. Price guides are illustrative; users must check the specific product, current price, size, availability, shipping, and return policy at the retailer. For exact product and inventory matching, integrate authorized retailer or affiliate feeds/APIs rather than inferring inventory from inspiration photos.
+
+### Virtual try-on
+
+Virtual try-on is available from supported catalogue references and saved wardrobe items. It sends the user's photo and the selected reference to YouCam only after explicit consent and when the provider key is configured. Clothing uses YouCam's clothing workflow; supported accessories include bags, hats, scarves, and shoes. The selected photo can be retained locally for reuse until replaced or cleared. Provider access, task compatibility, account units, image framing, and service availability affect whether a try-on completes successfully.
+
+### My wardrobe and saved pieces
+
+Users can save photos of their own clothes and accessories with a name, category, colours, season, and notes. Wardrobe images, saved pieces, profile preferences, display settings, and reusable skin-analysis/try-on photos are stored in **IndexedDB in the current browser**. They are not uploaded just by choosing a file or saving a wardrobe item, and they do not sync between browsers or devices. Wardrobe photos are only sent to YouCam when the user starts a virtual try-on with consent.
+
+The **From My wardrobe** section in Ensemble only appears when saved wardrobe items actually match the current recommendations. Photos are kept locally until the user removes them or clears the site's browser data.
+
+### Skin analysis and skincare discovery
+
+The **Skin analysis** section has two separate workflows that can use the same selfie:
+
+- **Facial colour-tone analysis** uses YouCam's Facial Color Tones Analyzer. After the user consents and starts analysis, myStyle uploads the selected selfie, polls the asynchronous task, displays detected colour values, and refreshes clothing/accessory styling suggestions. These colour cues are optional style inspiration, not rules about what suits a person.
+- **Skin-health analysis** uses the separate YouCam Skin Analysis API v2.1 to request SD metrics for skin type, moisture, oiliness, redness, pores, acne, radiance, and texture. This task requires a separate explicit consent checkbox. It is not automatically run as part of colour analysis. YouCam account access, API units, feature entitlements, image compatibility, and service availability affect whether it can complete.
+
+The **Skincare** tab in **Ensemble Style** uses the saved skin-health metrics plus the user's self-reported sensitivity preference and per-product budget to rank broad product categories. See the [official YouCam Skin Analysis API v2.1 reference](https://docs.perfectcorp.com/reference/ai_skin_analysis/v2.1) for its asynchronous task request, supported SD/HD actions, and account-dependent feature access. Suggestions can include hydration support, gentle/fragrance-free care, lightweight or non-comedogenic cleansing/moisture products, texture/radiance products, and daily facial sunscreen. Recommendations are deterministic category-level matching, not a diagnosis, a medical treatment plan, a guarantee that an ingredient is suitable, or proof that a product works. Users should check ingredients, patch-test as appropriate, confirm products with retailers, and seek qualified advice for persistent or concerning skin symptoms.
+
+Skincare suggestions link to product searches on [Sephora Canada](https://www.sephora.com/ca/en), [Amazon Canada](https://www.amazon.ca), or their US equivalents when the profile country is United States, plus official skincare catalogues from [Lancôme Canada](https://www.lancome.ca/en/skincare/), [Clinique Canada](https://www.clinique.ca/skincare-all), and their US sites. These links are not verified exact-SKU matches. Exact product titles, ingredients, stock, sizes, price and shipping are not imported from authorized retail product feeds in this prototype. Retail search and category pages can change.
+
+Skin-health analysis has a client-side minimum of 480 pixels on the shorter image side; a portrait near 720 × 1,080 pixels is a useful target. Facial colour analysis requires both image sides to be at least 320 pixels. All user-photo upload fields accept **JPG, JPEG, and PNG**. Uploads sent to YouCam must be non-empty and under **9.5 MB**, with a longest side no greater than 4,096 pixels. Each analysis requires its own consent before the selfie is sent to the provider. When a different selfie is selected, any saved colour and skin-health results from the previous selfie are cleared so recommendations do not rely on stale analysis.
+
+YouCam's processing and retention are governed by its own service terms.
+
+## Interface and accessibility
+
+- A shared button system defines primary, secondary, icon, file-picker, filter, and compact card actions.
+- Button colours, borders, hover states, and focus indicators adapt to light and dark themes. Dark mode uses plum/charcoal surfaces with coral/apricot accents.
+- Small, medium, and large text settings scale interface text and control dimensions. Theme and text-size preferences persist in the browser.
+- Layouts are responsive and include keyboard-focus styling and reduced-motion support.
+- A first-visit style quiz and an optional guided walkthrough help users get started.
+- After successful sign-out, the session is cleared and the app redirects to the public landing page (`/`).
+
+## Technology
+
+- Python 3.13
+- FastAPI and Uvicorn
+- Jinja2 templates
+- Browser JavaScript and CSS
+- IndexedDB for browser-local profile, settings, photos, saved pieces, and wardrobe data
+- YouCam API for facial colour-tone analysis, Skin Analysis v2.1 skin-health metrics, and virtual try-on (optional; configured with a provider key and provider entitlement)
+- Curated Pexels photo references for outfit inspiration
+
+The standard recommendation and search path uses deterministic local ranking; it does not require a generative AI API key.
 
 ## Run locally
 
-Requires Python 3.12+ (the included `.python-version` is set for a compatible Vercel runtime).
+From the repository root (the directory containing `index.py`):
 
 ```bash
-cd myStyle
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\\Scripts\\activate
-pip install -r requirements.txt
-cp .env.example .env             # optional for local demo; set provider keys as needed
-uvicorn index:app --reload --env-file .env
+python3.13 -m venv .venv
+source .venv/bin/activate       # macOS/Linux
+python -m pip install -r requirements.txt
+uvicorn index:app --reload
 ```
 
-Open http://127.0.0.1:8000.
+Open <http://127.0.0.1:8000>. On Windows, activate the environment with `.venv\Scripts\Activate.ps1` in PowerShell or `.venv\Scripts\activate.bat` in Command Prompt.
 
-Demo sign-in:
+The current prototype uses a demo account. The sign-in page displays the credentials and pre-fills the form. Defaults are:
 
 - Email: `demo@mystyle.app`
 - Password: `myStyle2026`
 
-These are deliberately visible demo credentials, not production authentication. Change them before sharing the prototype.
+Set `DEMO_EMAIL` and `DEMO_PASSWORD` to change them. This is demo authentication, not a production identity system.
 
-## Environment variables
+## Configuration
+
+Environment variables can be set in the shell for local development or in the deployment platform's project settings.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `SESSION_SECRET` | Required on Vercel | Long, random secret used to sign the demo session cookie. |
-| `DEMO_EMAIL` | Optional | Demo account email; defaults to `demo@mystyle.app`. |
-| `DEMO_PASSWORD` | Optional | Demo password; defaults to `myStyle2026`. |
-| `GEMINI_API_KEY` | Optional legacy helper | Not used by the standard recommendation/search request path; ranking is deterministic for responsiveness. |
-| `GEMINI_MODEL` | Optional legacy helper | Defaults to `gemini-3.6-flash`; the standard UI path does not call it. |
-| `YCE_API_KEY` | Optional until testing skin analysis | Enables live YouCam Facial Color Tones Analyzer. |
-| `YCE_API_BASE` | Optional | Defaults to `https://yce-api-01.makeupar.com`. |
-| `VERCEL` | Set by Vercel | Uses secure session cookies when set to `1`. |
+| `SESSION_SECRET` | Required on Vercel | Secret used to sign the session cookie. Set a long, randomly generated value. The app refuses to start on Vercel without it. |
+| `DEMO_EMAIL` | Optional | Demo account email. Defaults to `demo@mystyle.app`. |
+| `DEMO_PASSWORD` | Optional | Demo account password. Defaults to `myStyle2026`. |
+| `YCE_API_KEY` | Required for live YouCam features | Enables facial colour-tone analysis, Skin Analysis v2.1 skin-health analysis, and virtual try-on, subject to the account's access and remaining units. |
+| `YCE_API_BASE` | Optional | YouCam API base URL; defaults to `https://yce-api-01.makeupar.com`. |
+| `VERCEL` | Set by Vercel | Enables deployment-specific session cookie behavior and startup validation. |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Not required | Retained helper settings; the standard recommendation/search route does not call Gemini. |
 
-Never commit `.env` or API keys. `.env.example` contains blank provider keys.
+Do not commit secrets or provider keys to source control. Local development falls back to a clearly marked local-only session secret when `SESSION_SECRET` is unset; configure a proper secret for any shared environment.
 
 ## Deploy to Vercel
 
-1. Push the `myStyle` directory to a repository and import it into Vercel.
-2. Set `SESSION_SECRET` to a high-entropy value in Project Settings → Environment Variables.
-3. Set `DEMO_EMAIL` and `DEMO_PASSWORD` if using the demo account.
-4. Add `YCE_API_KEY` when ready to test live skin analysis. The standard style recommendation/search path is deterministic and does not require an AI-provider key.
-5. Deploy. The Vercel entry point is the root `index.py`; templates are included by `vercel.json` and static assets live in `public/assets`.
+1. Push the repository to GitHub and import it into Vercel.
+2. Set a strong `SESSION_SECRET` in the Vercel project's environment variables.
+3. Set `DEMO_EMAIL` and `DEMO_PASSWORD` if the demo credentials need to change.
+4. Set `YCE_API_KEY` to enable live YouCam workflows. Configure provider access and verify account permissions/units before testing.
+5. Deploy and test sign-in, sign-out, assets, photo uploads, recommendations, and the provider workflows in staging.
 
-The demo login is for a prototype. Before real users, add a production identity provider, rate limiting, robust session/CSRF controls, deletion controls, privacy/consent handling and backend persistence if cross-device profile sync is required.
+`index.py` exposes the FastAPI app. `vercel.json` includes the Jinja2 templates in the Python function, and static assets are in `public/assets`.
+
+**Production readiness:** demo authentication is not suitable for a public production service. Before onboarding real users, implement a production identity provider, account-level authorization, rate limiting, data deletion controls, a formal privacy policy and consent process, and persistent server-side storage only where required by the product.
 
 ## API routes
 
-- `GET /` — landing page
-- `GET /signin` and `POST /signin` — demo sign-in
-- `GET /signout` and `POST /signout` — sign-out flow
-- `GET /app` — authenticated workspace
-- `GET /api/config` — provider configuration status
-- `GET /api/catalog` — curated real-photo style references, palette options, style options and occasions
-- `POST /api/recommendations` — season-, budget-, climate-, palette- and preference-aware ranking
-- `POST /api/color-analysis` — create YouCam skin colour analysis task after consent
-- `GET /api/tasks/color/{task_id}` — poll YouCam skin analysis task
-- `POST /api/try-on` — upload the user photo and selected clothing/accessory reference to YouCam after consent; supports Clothes V4 plus dedicated bag, hat, scarf and shoes tasks
-- `GET /api/tasks/try-on/{task_id}?kind={provider_task_kind}` — poll the corresponding clothing or accessory task
-- `GET /health` — health check
+| Method | Route | Purpose |
+|---|---|---|
+| `GET` | `/` | Public landing page |
+| `GET`, `POST` | `/signin` | Sign-in page and demo authentication |
+| `GET`, `POST` | `/signout` | Sign-out confirmation; the POST clears the session and redirects to `/` |
+| `GET` | `/app` | Authenticated application |
+| `GET` | `/health` | Health check |
+| `GET` | `/api/config` | Provider-configuration status and supported markets |
+| `GET` | `/api/catalog` | Style catalogue, palettes, styles, and occasions |
+| `POST` | `/api/recommendations` | Profile-aware recommendation and search results |
+| `POST` | `/api/color-analysis` | Starts a consented YouCam facial colour-tone analysis task |
+| `GET` | `/api/tasks/color/{task_id}` | Checks facial colour-tone task status |
+| `POST` | `/api/skincare-analysis` | Starts a separately consented YouCam Skin Analysis v2.1 task |
+| `GET` | `/api/tasks/skincare/{task_id}` | Checks skin-health task status and returns sanitized metrics |
+| `POST` | `/api/try-on` | Starts a consented clothing or supported accessory try-on task |
+| `GET` | `/api/tasks/try-on/{task_id}` | Checks virtual try-on task status; accepts a provider task `kind` query parameter |
 
-## Testing
+The authenticated API uses the session cookie and CSRF checks for state-changing requests.
+
+## Tests and checks
+
+Run from the repository root:
 
 ```bash
 python -m pytest -q
 node --check public/assets/app.js
-python -m compileall -q index.py mystyle
+python -m compileall -q index.py mystyle scripts
 ```
 
-Automated tests cover authentication, gender-specific recommendations, real-photo catalogue metadata, distinct photo URLs, official retailer-search links, skin-guided accessory suggestions, wardrobe integration, virtual try-on wiring, read-only profile skin-analysis status, dark mode accents, local image reuse, first-visit quiz routing, walkthrough controls, save-without-scroll behavior, region/currency selection, budget and season filtering, query ranking, hidden-item feedback, and skin-analysis consent. Real YouCam requests and external photo loads require live provider/network access and must be smoke-tested in staging; the automated suite does not claim live provider verification. Run `python scripts/verify_photo_catalog.py` in a network-enabled environment to check the remote photo references before deployment.
+Automated tests cover authentication and CSRF, landing-page sign-out, recommendation and search filtering, seasonal and region-aware profile preferences, catalogue metadata, shopping links, separate skin-analysis consent, skin-health task creation and result sanitization, category-level skincare matching, retailer links, virtual try-on wiring, browser-local wardrobe integration, photo upload types, region dropdowns, dark/light theme behaviour, text-size controls, and the shared button system.
 
-## Design note
-
-The reference pattern is a personal styling service: style profile → Ensemble recommendations → feedback → progressively better suggestions. The linked comparison article is dated 2020, so the implementation uses the durable interaction model rather than treating that article as an up-to-date inventory or pricing source.
+The automated suite does not make live provider requests or guarantee that remote photo and shopping results will remain available. Use a network-enabled staging environment to test external photos and YouCam end-to-end before release.
